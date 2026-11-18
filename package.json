@@ -1,0 +1,52 @@
+{
+  "name": "circulo-organico",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Programa de lealtad y recompensas multi-perfil de Grupo Orgánico Hoteles Boutique",
+  "scripts": {
+    "dev": "next dev",
+    "build": "prisma generate && next build",
+    "start": "next start",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "postinstall": "prisma generate",
+    "db:push": "prisma db push",
+    "db:migrate": "prisma migrate dev",
+    "db:seed": "tsx prisma/seed.ts",
+    "db:studio": "prisma studio"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^1.2.1",
+    "@prisma/adapter-neon": "^6.19.3",
+    "@prisma/client": "^6.19.3",
+    "bcryptjs": "^3.0.3",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.74.0",
+    "next": "^15.5.14",
+    "next-auth": "5.0.0-beta.32",
+    "qrcode.react": "^4.2.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "tailwind-merge": "^3.3.0",
+    "ws": "^8.18.1",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.4",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^22.14.0",
+    "@types/react": "^19.1.2",
+    "@types/react-dom": "^19.1.2",
+    "@types/ws": "^8.18.1",
+    "eslint": "^9.24.0",
+    "eslint-config-next": "^15.5.14",
+    "prisma": "^6.19.3",
+    "tailwindcss": "^4.1.4",
+    "tsx": "^4.19.3",
+    "vitest": "^3.1.1"
+  }
+}
