@@ -60,14 +60,14 @@ function getNavForRole(role: ProfileRole): {
             basePath: "/admin",
             tab: "operacion",
             isDefaultTab: true,
-            label: "Carga de Consumos",
+            label: "Alta de Puntos y Consumos",
             icon: Sparkles,
           },
           {
             href: "/admin?tab=canje",
             basePath: "/admin",
             tab: "canje",
-            label: "Redención y Canje",
+            label: "Canje / Intercambio",
             icon: Gift,
           },
           {
