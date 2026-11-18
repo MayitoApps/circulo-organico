@@ -8,13 +8,20 @@ import {
   Building2,
   CalendarCheck,
   CheckCircle2,
+  Gift,
+  MapPin,
   PlusCircle,
   QrCode,
   RefreshCw,
   Search,
   Sparkles,
+  Users,
   XCircle,
 } from "lucide-react";
+import {
+  ADMIN_REDEEMABLE_EXPERIENCES,
+  type MomentHotelKey,
+} from "@/lib/catalog-data";
 import {
   calculateAgencyEventBenefits,
   formatMxn,
@@ -32,6 +39,7 @@ import {
   markAgencyCommissionPaidAction,
   processAdminRedemptionAction,
   recordAdminConsumptionAction,
+  redeemCatalogExperienceByAdminAction,
   settleAgencyEventAction,
   updateMassageCertificateStatusAction,
   updateQuoteStatusAction,
@@ -200,8 +208,8 @@ export function AdminDashboardClient({
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedMembershipId, setSelectedMembershipId] = useState<string>(
     members.find((m) => m.membershipNumber === "000 248")?.membershipId ??
-      members[0]?.membershipId ??
-      ""
+    members[0]?.membershipId ??
+    ""
   );
 
   // Estado formulario Alta de Puntos / Consumos
@@ -217,7 +225,11 @@ export function AdminDashboardClient({
   const [chargeDesc, setChargeDesc] = useState("Estancia pagada en recepción");
   const [agencyClientName, setAgencyClientName] = useState("");
 
-  // Estado formulario Intercambio / Canje de Puntos
+  // Estado formulario Intercambio / Canje de Puntos (Catálogo visual + modo hospedaje opcional)
+  const [redeemMode, setRedeemMode] = useState<"experiencias" | "hospedaje">("experiencias");
+  const [selectedExperienceId, setSelectedExperienceId] = useState<string>("");
+  const [experienceScope, setExperienceScope] = useState<"disponibles" | "todas">("disponibles");
+  const [hotelFilter, setHotelFilter] = useState<"todas" | MomentHotelKey | "varias">("todas");
   const [redeemPurpose, setRedeemPurpose] = useState<RedemptionPurpose>("HOSPEDAJE");
   const [redeemBaseAmount, setRedeemBaseAmount] = useState(4000);
   const [redeemRequestedAmount, setRedeemRequestedAmount] = useState(500);
@@ -278,6 +290,7 @@ export function AdminDashboardClient({
 
   const selectMember = (m: AdminMemberRecord) => {
     setSelectedMembershipId(m.membershipId);
+    setSelectedExperienceId("");
     setFeedback(null);
     setGrossEditedManually(false);
 
@@ -432,6 +445,68 @@ export function AdminDashboardClient({
     const byRule = Math.floor(redeemBaseAmount * share);
     return Math.max(0, Math.min(Math.floor(available), byRule));
   }, [selectedMember, effectiveRedeemPurpose, redeemBaseAmount]);
+
+  const selectedMemberBalance = selectedMember
+    ? selectedMember.role === "EMPRESA"
+      ? selectedMember.cashBalanceMxn
+      : selectedMember.pointsBalance
+    : 0;
+
+  const isCompanyAuthorized =
+    selectedMember?.role !== "EMPRESA" || Boolean(effectiveAuthorizedPersonId);
+
+  const affordableExperiencesCount = useMemo(
+    () =>
+      ADMIN_REDEEMABLE_EXPERIENCES.filter((exp) => {
+        const cost = selectedMember?.role === "EMPRESA" ? exp.mxnReference : exp.pointsCost;
+        return selectedMemberBalance >= cost;
+      }).length,
+    [selectedMember, selectedMemberBalance]
+  );
+
+  const effectiveScope =
+    affordableExperiencesCount === 0 ? "todas" : experienceScope;
+
+  const visibleExperiences = useMemo(() => {
+    return ADMIN_REDEEMABLE_EXPERIENCES.filter((exp) => {
+      if (hotelFilter !== "todas" && exp.hotelKey !== hotelFilter) return false;
+      if (effectiveScope === "disponibles") {
+        const cost = selectedMember?.role === "EMPRESA" ? exp.mxnReference : exp.pointsCost;
+        return selectedMemberBalance >= cost;
+      }
+      return true;
+    });
+  }, [hotelFilter, effectiveScope, selectedMember, selectedMemberBalance]);
+
+  const selectedExperience = useMemo(() => {
+    if (!selectedMember) return null;
+    const found = ADMIN_REDEEMABLE_EXPERIENCES.find((e) => e.id === selectedExperienceId);
+    if (!found) return null;
+    const cost = selectedMember.role === "EMPRESA" ? found.mxnReference : found.pointsCost;
+    return selectedMemberBalance >= cost ? found : null;
+  }, [selectedExperienceId, selectedMember, selectedMemberBalance]);
+
+  const handleRedeemExperience = () => {
+    if (!selectedMember || !selectedExperience) return;
+    setFeedback(null);
+
+    startTransition(async () => {
+      const res = await redeemCatalogExperienceByAdminAction({
+        membershipId: selectedMember.membershipId,
+        experienceId: selectedExperience.id,
+        authorizedPersonId: effectiveAuthorizedPersonId || null,
+      });
+
+      if (!res.ok) {
+        setFeedback({ ok: false, text: res.error });
+        return;
+      }
+
+      setSelectedExperienceId("");
+      setFeedback({ ok: true, text: res.summary });
+      router.refresh();
+    });
+  };
 
   const handleRecordConsumption = (e: React.FormEvent) => {
     e.preventDefault();
@@ -1175,148 +1250,449 @@ export function AdminDashboardClient({
           </div>
         )}
 
-        {/* SECCIÓN 2: INTERCAMBIO / CANJE DE PUNTOS */}
+        {/* SECCIÓN 2: INTERCAMBIO / CANJE VISUAL POR TARJETAS */}
         {activeSection === "canje" && selectedMember && (
-          <div className="grid gap-6 lg:grid-cols-12">
-            <Card variant="white" className="p-6 lg:col-span-7">
-              <SectionEyebrow>Paso 2 · Configura el canje</SectionEyebrow>
-              <h3 className="mt-1 font-editorial text-2xl font-semibold text-[#1B3B2B]">
-                ¿En qué va a usar{" "}
-                {selectedMember.role === "EMPRESA" ? "su saldo?" : "sus puntos?"}
-              </h3>
-
-              {/* Tarjeta visual con lo que tiene disponible */}
-              <div className="mt-4 flex items-center justify-between rounded-2xl border border-[#DFD2BA] bg-[#FAF8F5] px-4 py-3 text-xs">
-                <span className="text-[#5E645F]">Disponible en esta cuenta:</span>
-                <strong className="font-editorial text-2xl text-[#1B3B2B] tabular-nums">
-                  {selectedMember.role === "EMPRESA"
-                    ? formatMxn(selectedMember.cashBalanceMxn)
-                    : `${selectedMember.pointsBalance.toLocaleString("es-MX")} pts (${formatMxn(
-                        selectedMember.pointsBalance
-                      )})`}
-                </strong>
-              </div>
-
-              <form onSubmit={handleRedeem} className="mt-5 space-y-5">
-                {/* Botones visuales de tipo de canje (en lugar de select confuso) */}
+          <div className="space-y-6">
+            {/* Barra de modo y saldo */}
+            <Card variant="white" className="p-5 sm:p-6">
+              <div className="flex flex-col justify-between gap-4 border-b border-[#EFE8DC] pb-4 lg:flex-row lg:items-center">
                 <div>
-                  <label className={labelBaseClass}>¿Para qué los va a intercambiar?</label>
-                  <div
-                    className={cn(
-                      "grid gap-2.5",
-                      selectedMember.role === "EMPRESA" ? "sm:grid-cols-3" : "sm:grid-cols-2"
-                    )}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => setRedeemPurpose("HOSPEDAJE")}
-                      className={cn(
-                        "rounded-2xl border p-3.5 text-left transition",
-                        effectiveRedeemPurpose === "HOSPEDAJE"
-                          ? "border-[#1B3B2B] bg-[#1B3B2B] text-white"
-                          : "border-[#E4DDD1] bg-[#FAF8F5] text-[#1C201E] hover:border-[#1B3B2B]"
-                      )}
-                    >
-                      <p className="text-xs font-semibold">Hospedaje / Noche</p>
-                      <p
-                        className={cn(
-                          "mt-0.5 text-[11px]",
-                          effectiveRedeemPurpose === "HOSPEDAJE"
-                            ? "text-[#C8B289]"
-                            : "text-[#5E645F]"
-                        )}
-                      >
-                        Cubre hasta el 25% de la cuenta
-                      </p>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setRedeemPurpose("PREMIO_CATALOGO")}
-                      className={cn(
-                        "rounded-2xl border p-3.5 text-left transition",
-                        effectiveRedeemPurpose === "PREMIO_CATALOGO"
-                          ? "border-[#1B3B2B] bg-[#1B3B2B] text-white"
-                          : "border-[#E4DDD1] bg-[#FAF8F5] text-[#1C201E] hover:border-[#1B3B2B]"
-                      )}
-                    >
-                      <p className="text-xs font-semibold">Premio / Experiencia</p>
-                      <p
-                        className={cn(
-                          "mt-0.5 text-[11px]",
-                          effectiveRedeemPurpose === "PREMIO_CATALOGO"
-                            ? "text-[#C8B289]"
-                            : "text-[#5E645F]"
-                        )}
-                      >
-                        Cubre hasta el 100% del premio
-                      </p>
-                    </button>
-
-                    {selectedMember.role === "EMPRESA" && (
-                      <button
-                        type="button"
-                        onClick={() => setRedeemPurpose("EVENTO_EMPRESA")}
-                        className={cn(
-                          "rounded-2xl border p-3.5 text-left transition",
-                          effectiveRedeemPurpose === "EVENTO_EMPRESA"
-                            ? "border-[#1B3B2B] bg-[#1B3B2B] text-white"
-                            : "border-[#E4DDD1] bg-[#FAF8F5] text-[#1C201E] hover:border-[#1B3B2B]"
-                        )}
-                      >
-                        <p className="text-xs font-semibold">Evento Corporativo</p>
-                        <p
-                          className={cn(
-                            "mt-0.5 text-[11px]",
-                            effectiveRedeemPurpose === "EVENTO_EMPRESA"
-                              ? "text-[#C8B289]"
-                              : "text-[#5E645F]"
-                          )}
-                        >
-                          Cubre hasta el 10% del evento
-                        </p>
-                      </button>
-                    )}
-                  </div>
+                  <SectionEyebrow>Paso 2 · Elige la experiencia o premio</SectionEyebrow>
+                  <h3 className="mt-1 font-editorial text-2xl font-semibold text-[#1B3B2B]">
+                    {redeemMode === "experiencias"
+                      ? `Catálogo canjeable para ${selectedMember.legalName || selectedMember.fullName}`
+                      : "Descuento con puntos en cuenta de hospedaje o evento"}
+                  </h3>
                 </div>
 
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <label className={labelBaseClass}>Hotel / Sede</label>
-                    <select
-                      value={propertyId}
-                      onChange={(e) => setPropertyId(e.target.value)}
-                      className={inputBaseClass}
-                    >
-                      {properties.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name}
-                        </option>
-                      ))}
-                    </select>
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <div className="rounded-2xl border border-[#DFD2BA] bg-[#FAF8F5] px-4 py-2 text-xs">
+                    <span className="text-[#5E645F]">Saldo disponible: </span>
+                    <strong className="font-editorial text-xl text-[#1B3B2B] tabular-nums">
+                      {selectedMember.role === "EMPRESA"
+                        ? formatMxn(selectedMember.cashBalanceMxn)
+                        : `${selectedMember.pointsBalance.toLocaleString("es-MX")} pts`}
+                    </strong>
                   </div>
 
-                  {effectiveRedeemPurpose !== "PREMIO_CATALOGO" ? (
-                    <div>
-                      <label className={labelBaseClass}>
-                        Total de la cuenta del huésped (MXN)
-                      </label>
-                      <input
-                        type="number"
-                        min={1}
-                        step={100}
-                        value={redeemBaseAmount}
-                        onChange={(e) => setRedeemBaseAmount(Math.max(0, Number(e.target.value)))}
-                        className={inputBaseClass}
-                      />
-                    </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setRedeemMode((prev) =>
+                        prev === "experiencias" ? "hospedaje" : "experiencias"
+                      )
+                    }
+                    className="rounded-full border border-[#1B3B2B]/25 bg-white px-4 py-2 text-xs font-semibold text-[#1B3B2B] transition hover:bg-[#F2EFE9]"
+                  >
+                    {redeemMode === "experiencias"
+                      ? "Descontar en cuenta de hospedaje (25%)"
+                      : "← Volver a tarjetas de experiencias"}
+                  </button>
+                </div>
+              </div>
+
+              {selectedMember.role === "EMPRESA" && (
+                <div className="mt-4 flex flex-wrap items-center gap-3 rounded-2xl bg-[#FAF8F5] px-4 py-3 text-xs">
+                  <span className="font-semibold text-[#1B3B2B]">Autoriza uso de saldo:</span>
+                  <select
+                    value={effectiveAuthorizedPersonId}
+                    onChange={(e) => setAuthorizedPersonId(e.target.value)}
+                    className="rounded-xl border border-[#DCD4C6] bg-white px-3 py-1.5 text-xs text-[#1C201E]"
+                  >
+                    <option value="">Selecciona autorizador...</option>
+                    {selectedMember.authorizedPeople.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.fullName} (
+                        {p.roleInAccount === "AUTORIZA_PREMIOS_Y_SALDO"
+                          ? "Autoriza saldo"
+                          : "Solo reserva"}
+                        ) {!p.isActive ? "[Inactivo]" : ""}
+                      </option>
+                    ))}
+                  </select>
+                  {!isCompanyAuthorized && (
+                    <span className="font-medium text-[#9B2C2C]">
+                      Esta cuenta necesita una persona activa con permiso de autorización de saldo.
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {redeemMode === "experiencias" && (
+                <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setExperienceScope("disponibles")}
+                      disabled={affordableExperiencesCount === 0}
+                      className={cn(
+                        "rounded-full border px-3.5 py-1.5 text-xs font-semibold transition disabled:opacity-50",
+                        effectiveScope === "disponibles"
+                          ? "border-[#1B3B2B] bg-[#1B3B2B] text-white"
+                          : "border-[#DFD6C7] bg-white text-[#4C524E]"
+                      )}
+                    >
+                      Le alcanzan ({affordableExperiencesCount})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setExperienceScope("todas")}
+                      className={cn(
+                        "rounded-full border px-3.5 py-1.5 text-xs font-semibold transition",
+                        effectiveScope === "todas"
+                          ? "border-[#1B3B2B] bg-[#1B3B2B] text-white"
+                          : "border-[#DFD6C7] bg-white text-[#4C524E]"
+                      )}
+                    >
+                      Ver todo el catálogo ({ADMIN_REDEEMABLE_EXPERIENCES.length})
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs font-medium text-[#5E645F]">Sede:</label>
+                    <select
+                      value={hotelFilter}
+                      onChange={(e) =>
+                        setHotelFilter(e.target.value as "todas" | MomentHotelKey | "varias")
+                      }
+                      className="rounded-xl border border-[#DCD4C6] bg-white px-3 py-1.5 text-xs text-[#1C201E]"
+                    >
+                      <option value="todas">Todas las sedes</option>
+                      <option value="varias">OTAM · Varias sedes</option>
+                      <option value="ajusco">Orgánico Ajusco</option>
+                      <option value="tepoztlan">Orgánico Tepoztlán</option>
+                      <option value="valle">Orgánico Valle</option>
+                      <option value="veracruz">Orgánico Veracruz</option>
+                      <option value="quinta-soledad">Quinta Soledad</option>
+                      <option value="roma-norte">Roma Norte · Frontera 49</option>
+                      <option value="origen">Origen Spa</option>
+                    </select>
+                  </div>
+                </div>
+              )}
+
+              {redeemMode === "experiencias" && affordableExperiencesCount === 0 && (
+                <div className="mt-4 rounded-2xl border border-[#E8D1A3] bg-[#FBF3E2] px-4 py-3 text-xs text-[#8A5A19]">
+                  Este socio tiene{" "}
+                  <strong>
+                    {selectedMember.role === "EMPRESA"
+                      ? formatMxn(selectedMemberBalance)
+                      : `${selectedMemberBalance.toLocaleString("es-MX")} pts`}
+                  </strong>{" "}
+                  y la experiencia más accesible inicia en{" "}
+                  <strong>
+                    {ADMIN_REDEEMABLE_EXPERIENCES[0]?.pointsCost.toLocaleString("es-MX")} pts
+                  </strong>
+                  . Abajo ves el catálogo completo y cuántos puntos le faltan para cada una.
+                </div>
+              )}
+            </Card>
+
+            {redeemMode === "experiencias" ? (
+              <div className="grid items-start gap-6 lg:grid-cols-12">
+                {/* Tarjetas de experiencias */}
+                <div className="lg:col-span-8">
+                  {visibleExperiences.length === 0 ? (
+                    <Card variant="sand" className="p-8 text-center">
+                      <p className="text-sm text-[#4C524E]">
+                        No hay experiencias en esa sede con el filtro actual. Cambia a{" "}
+                        <strong>&quot;Todas las sedes&quot;</strong> o{" "}
+                        <strong>&quot;Ver todo el catálogo&quot;</strong>.
+                      </p>
+                    </Card>
                   ) : (
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      {visibleExperiences.map((exp) => {
+                        const cost =
+                          selectedMember.role === "EMPRESA" ? exp.mxnReference : exp.pointsCost;
+                        const canAfford = selectedMemberBalance >= cost;
+                        const isSelected = selectedExperience?.id === exp.id;
+                        const remainingAfter = selectedMemberBalance - cost;
+                        const missingPoints = Math.max(0, cost - selectedMemberBalance);
+
+                        return (
+                          <button
+                            key={exp.id}
+                            type="button"
+                            disabled={!canAfford}
+                            onClick={() => setSelectedExperienceId(exp.id)}
+                            className={cn(
+                              "group flex h-full flex-col overflow-hidden rounded-3xl border text-left transition-all",
+                              isSelected
+                                ? "border-2 border-[#1B3B2B] bg-white ring-2 ring-[#C8B289] shadow-md"
+                                : canAfford
+                                  ? "border-[#E4DDD1] bg-white hover:-translate-y-0.5 hover:border-[#1B3B2B] hover:shadow-md"
+                                  : "cursor-not-allowed border-[#E4DDD1] bg-[#F5F2EB] opacity-65"
+                            )}
+                          >
+                            <div className="relative h-36 w-full overflow-hidden bg-[#EFE8DC]">
+                              <img
+                                src={exp.imageUrl}
+                                alt={exp.title}
+                                className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                              />
+                              <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent" />
+                              <span
+                                className={cn(
+                                  "absolute left-3 top-3 rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider",
+                                  isSelected
+                                    ? "bg-[#C8B289] text-[#1B3B2B]"
+                                    : "bg-[#FAF8F5]/95 text-[#1B3B2B]"
+                                )}
+                              >
+                                {isSelected ? "✓ Seleccionada" : exp.hotelName}
+                              </span>
+                              <div className="absolute bottom-2.5 left-3 right-3 text-white">
+                                <p className="font-editorial text-xl font-medium leading-tight">
+                                  {exp.title}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="flex flex-1 flex-col justify-between p-4">
+                              <div>
+                                <p className="text-xs text-[#5E645F]">{exp.subtitle}</p>
+                                <div className="mt-2.5 flex flex-wrap gap-3 text-[11px] text-[#4C524E]">
+                                  <span className="inline-flex items-center gap-1">
+                                    <Users className="h-3.5 w-3.5 text-[#9E6B4B]" />
+                                    {exp.capacity}
+                                  </span>
+                                  <span className="inline-flex items-center gap-1">
+                                    <MapPin className="h-3.5 w-3.5 text-[#9E6B4B]" />
+                                    {exp.hotelName}
+                                  </span>
+                                </div>
+                              </div>
+
+                              <div className="mt-4 flex items-center justify-between border-t border-[#EFE8DC] pt-3">
+                                <div>
+                                  <p className="font-editorial text-2xl font-semibold text-[#1B3B2B] tabular-nums">
+                                    {selectedMember.role === "EMPRESA"
+                                      ? formatMxn(cost)
+                                      : `${cost.toLocaleString("es-MX")} pts`}
+                                  </p>
+                                </div>
+
+                                {canAfford ? (
+                                  <span
+                                    className={cn(
+                                      "rounded-full px-3 py-1 text-[11px] font-semibold",
+                                      isSelected
+                                        ? "bg-[#1B3B2B] text-white"
+                                        : "bg-[#E6F2EB] text-[#1B3B2B]"
+                                    )}
+                                  >
+                                    {isSelected
+                                      ? "Elegida"
+                                      : `Quedan ${
+                                          selectedMember.role === "EMPRESA"
+                                            ? formatMxn(remainingAfter)
+                                            : `${remainingAfter.toLocaleString("es-MX")} pts`
+                                        }`}
+                                  </span>
+                                ) : (
+                                  <span className="rounded-full bg-[#EFE8DC] px-3 py-1 text-[11px] font-semibold text-[#8A5A19]">
+                                    Faltan{" "}
+                                    {selectedMember.role === "EMPRESA"
+                                      ? formatMxn(missingPoints)
+                                      : `${missingPoints.toLocaleString("es-MX")} pts`}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Panel fijo Paso 3 · Confirmar canje */}
+                <div className="lg:col-span-4 lg:sticky lg:top-6">
+                  <Card variant="forest" className="p-6">
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#C8B289]">
+                      Paso 3 · Confirmar canje
+                    </span>
+                    <h3 className="mt-1 font-editorial text-2xl font-medium text-white">
+                      Resumen del intercambio
+                    </h3>
+
+                    {!selectedExperience ? (
+                      <div className="mt-5 rounded-2xl border border-white/15 bg-white/8 p-5 text-xs text-white/80">
+                        <Gift className="mb-2.5 h-6 w-6 text-[#C8B289]" />
+                        <p className="font-semibold text-white">
+                          Selecciona una experiencia de la lista
+                        </p>
+                        <p className="mt-1 leading-relaxed">
+                          Haz clic en cualquiera de las tarjetas disponibles para ver el saldo final
+                          y descontar los puntos con un solo clic.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="mt-5 space-y-4">
+                        <div className="flex items-center gap-3 rounded-2xl bg-white/10 p-3">
+                          <img
+                            src={selectedExperience.imageUrl}
+                            alt={selectedExperience.title}
+                            className="h-14 w-14 shrink-0 rounded-xl object-cover"
+                          />
+                          <div className="min-w-0">
+                            <p className="truncate font-editorial text-lg font-medium text-white">
+                              {selectedExperience.title}
+                            </p>
+                            <p className="truncate text-xs text-[#C8B289]">
+                              {selectedExperience.hotelName} · {selectedExperience.capacity}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="space-y-2.5 text-sm">
+                          <div className="flex justify-between border-b border-white/15 pb-2">
+                            <span className="text-white/75">Saldo actual</span>
+                            <span className="tabular-nums">
+                              {selectedMember.role === "EMPRESA"
+                                ? formatMxn(selectedMemberBalance)
+                                : `${selectedMemberBalance.toLocaleString("es-MX")} pts`}
+                            </span>
+                          </div>
+                          <div className="flex justify-between border-b border-white/15 pb-2">
+                            <span className="text-white/75">Costo de la experiencia</span>
+                            <strong className="text-[#C8B289] tabular-nums">
+                              -
+                              {selectedMember.role === "EMPRESA"
+                                ? formatMxn(selectedExperience.mxnReference)
+                                : `${selectedExperience.pointsCost.toLocaleString("es-MX")} pts`}
+                            </strong>
+                          </div>
+                          <div className="flex items-baseline justify-between rounded-xl bg-white/10 px-4 py-3">
+                            <span className="text-white/85">Saldo que le quedará</span>
+                            <strong className="font-editorial text-2xl text-white tabular-nums">
+                              {selectedMember.role === "EMPRESA"
+                                ? formatMxn(
+                                    Math.max(
+                                      0,
+                                      selectedMemberBalance - selectedExperience.mxnReference
+                                    )
+                                  )
+                                : `${Math.max(
+                                    0,
+                                    selectedMemberBalance - selectedExperience.pointsCost
+                                  ).toLocaleString("es-MX")} pts`}
+                            </strong>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          disabled={isPending || !isCompanyAuthorized}
+                          onClick={handleRedeemExperience}
+                          className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#C8B289] px-6 py-3.5 text-sm font-semibold text-[#1B3B2B] transition hover:bg-[#DFCFAF] disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          <ArrowRightLeft className="h-4 w-4" />
+                          {isPending
+                            ? "Canjeando..."
+                            : selectedMember.role === "EMPRESA"
+                              ? `Canjear saldo (-${formatMxn(selectedExperience.mxnReference)})`
+                              : `Canjear puntos (-${selectedExperience.pointsCost.toLocaleString("es-MX")} pts)`}
+                        </button>
+
+                        <p className="text-center text-[11px] text-white/70">
+                          Descuenta los puntos al instante y emite su certificado vigente por 12
+                          meses.
+                        </p>
+                      </div>
+                    )}
+                  </Card>
+                </div>
+              </div>
+            ) : (
+              /* Modo opcional: descuento en cuenta de hospedaje o evento (25% / 10%) */
+              <div className="grid gap-6 lg:grid-cols-12">
+                <Card variant="white" className="p-6 lg:col-span-7">
+                  <form onSubmit={handleRedeem} className="space-y-5">
+                    {selectedMember.role === "EMPRESA" && (
+                      <div className="grid gap-2.5 sm:grid-cols-2">
+                        <button
+                          type="button"
+                          onClick={() => setRedeemPurpose("HOSPEDAJE")}
+                          className={cn(
+                            "rounded-2xl border p-3.5 text-left transition",
+                            effectiveRedeemPurpose === "HOSPEDAJE"
+                              ? "border-[#1B3B2B] bg-[#1B3B2B] text-white"
+                              : "border-[#E4DDD1] bg-[#FAF8F5] text-[#1C201E]"
+                          )}
+                        >
+                          <p className="text-xs font-semibold">Hospedaje (hasta 25%)</p>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setRedeemPurpose("EVENTO_EMPRESA")}
+                          className={cn(
+                            "rounded-2xl border p-3.5 text-left transition",
+                            effectiveRedeemPurpose === "EVENTO_EMPRESA"
+                              ? "border-[#1B3B2B] bg-[#1B3B2B] text-white"
+                              : "border-[#E4DDD1] bg-[#FAF8F5] text-[#1C201E]"
+                          )}
+                        >
+                          <p className="text-xs font-semibold">Evento Corporativo (hasta 10%)</p>
+                        </button>
+                      </div>
+                    )}
+
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div>
+                        <label className={labelBaseClass}>Hotel / Sede</label>
+                        <select
+                          value={propertyId}
+                          onChange={(e) => setPropertyId(e.target.value)}
+                          className={inputBaseClass}
+                        >
+                          {properties.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className={labelBaseClass}>
+                          Total de la cuenta del huésped (MXN)
+                        </label>
+                        <input
+                          type="number"
+                          min={1}
+                          step={100}
+                          value={redeemBaseAmount}
+                          onChange={(e) =>
+                            setRedeemBaseAmount(Math.max(0, Number(e.target.value)))
+                          }
+                          className={inputBaseClass}
+                        />
+                      </div>
+                    </div>
+
                     <div>
-                      <label className={labelBaseClass}>
-                        {selectedMember.role === "EMPRESA"
-                          ? "Valor del premio en saldo (MXN)"
-                          : "Puntos a intercambiar (1 pt = $1 MXN)"}
-                      </label>
+                      <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+                        <label className={cn(labelBaseClass, "mb-0")}>
+                          {selectedMember.role === "EMPRESA"
+                            ? "Saldo MXN a descontar"
+                            : "Puntos a descontar (1 pt = $1 MXN)"}
+                        </label>
+                        {maxApplyForCurrentRule > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setRedeemRequestedAmount(maxApplyForCurrentRule)}
+                            className="text-xs font-semibold text-[#1B3B2B] underline hover:text-[#9E6B4B]"
+                          >
+                            Usar máximo permitido (
+                            {selectedMember.role === "EMPRESA"
+                              ? formatMxn(maxApplyForCurrentRule)
+                              : `${maxApplyForCurrentRule.toLocaleString("es-MX")} pts`}
+                            )
+                          </button>
+                        )}
+                      </div>
                       <input
                         type="number"
                         min={1}
@@ -1327,171 +1703,57 @@ export function AdminDashboardClient({
                         className={cn(inputBaseClass, "border-[#1B3B2B] font-semibold")}
                       />
                     </div>
-                  )}
-                </div>
 
-                {effectiveRedeemPurpose !== "PREMIO_CATALOGO" && (
-                  <div>
-                    <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
-                      <label className={cn(labelBaseClass, "mb-0")}>
-                        {selectedMember.role === "EMPRESA"
-                          ? "Saldo MXN que quieres descontar"
-                          : "Puntos que quieres descontar (1 pt = $1 MXN)"}
-                      </label>
-                      {maxApplyForCurrentRule > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => setRedeemRequestedAmount(maxApplyForCurrentRule)}
-                          className="text-xs font-semibold text-[#1B3B2B] underline hover:text-[#9E6B4B]"
-                        >
-                          Usar máximo permitido (
-                          {selectedMember.role === "EMPRESA"
-                            ? formatMxn(maxApplyForCurrentRule)
-                            : `${maxApplyForCurrentRule.toLocaleString("es-MX")} pts`}
-                          )
-                        </button>
+                    <div>
+                      <label className={labelBaseClass}>Nota del canje</label>
+                      <input
+                        type="text"
+                        required
+                        value={redeemDesc}
+                        onChange={(e) => setRedeemDesc(e.target.value)}
+                        className={inputBaseClass}
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={isPending || !redemptionCheck?.valid}
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#1B3B2B] px-6 py-3.5 text-sm font-semibold text-white transition hover:bg-[#132A1E] disabled:cursor-not-allowed disabled:bg-[#CFC9BE]"
+                    >
+                      <ArrowRightLeft className="h-4 w-4 text-[#C8B289]" />
+                      {isPending ? "Aplicando..." : "Canjear puntos en esta cuenta"}
+                    </button>
+                  </form>
+                </Card>
+
+                <Card variant="forest" className="p-6 lg:col-span-5">
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#C8B289]">
+                    Cuenta final en caja
+                  </span>
+                  {redemptionCheck && (
+                    <div className="mt-4 space-y-3 text-sm">
+                      <div className="flex justify-between border-b border-white/15 pb-2">
+                        <span className="text-white/75">Máximo permitido</span>
+                        <strong className="text-[#C8B289] tabular-nums">
+                          {formatMxn(redemptionCheck.maxAllowedAmountMxn)}
+                        </strong>
+                      </div>
+                      <div className="flex items-baseline justify-between rounded-xl bg-white/10 px-4 py-3">
+                        <span className="text-white/85">Restante a cobrar en recepción</span>
+                        <strong className="font-editorial text-3xl text-white tabular-nums">
+                          {formatMxn(Math.max(0, redeemBaseAmount - redeemRequestedAmount))}
+                        </strong>
+                      </div>
+                      {!redemptionCheck.valid && redemptionCheck.error && (
+                        <div className="rounded-xl bg-[#9B2C2C]/35 p-3 text-xs text-white">
+                          {redemptionCheck.error}
+                        </div>
                       )}
                     </div>
-                    <input
-                      type="number"
-                      min={1}
-                      value={redeemRequestedAmount}
-                      onChange={(e) =>
-                        setRedeemRequestedAmount(Math.max(0, Number(e.target.value)))
-                      }
-                      className={cn(inputBaseClass, "border-[#1B3B2B] font-semibold")}
-                    />
-                  </div>
-                )}
-
-                {selectedMember.role === "EMPRESA" && (
-                  <div>
-                    <label className={labelBaseClass}>Persona que autoriza usar el saldo</label>
-                    <select
-                      value={effectiveAuthorizedPersonId}
-                      onChange={(e) => setAuthorizedPersonId(e.target.value)}
-                      className={inputBaseClass}
-                    >
-                      <option value="">Selecciona autorizador...</option>
-                      {selectedMember.authorizedPeople.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.fullName} (
-                          {p.roleInAccount === "AUTORIZA_PREMIOS_Y_SALDO"
-                            ? "Autoriza saldo"
-                            : "Solo reserva"}
-                          ) {!p.isActive ? "[Inactivo]" : ""}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-
-                <div>
-                  <label className={labelBaseClass}>Nota o detalle del canje</label>
-                  <input
-                    type="text"
-                    required
-                    value={redeemDesc}
-                    onChange={(e) => setRedeemDesc(e.target.value)}
-                    placeholder="Ej. Descuento en noche de hotel o Canje botella / experiencia"
-                    className={inputBaseClass}
-                  />
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={isPending || !redemptionCheck?.valid}
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#1B3B2B] px-6 py-3.5 text-sm font-semibold text-white transition hover:bg-[#132A1E] disabled:cursor-not-allowed disabled:bg-[#CFC9BE]"
-                >
-                  <ArrowRightLeft className="h-4 w-4 text-[#C8B289]" />
-                  {isPending
-                    ? "Aplicando canje..."
-                    : selectedMember.role === "EMPRESA"
-                      ? `Descontar ${formatMxn(redeemRequestedAmount)} de saldo`
-                      : `Descontar ${redeemRequestedAmount.toLocaleString("es-MX")} puntos ahora`}
-                </button>
-              </form>
-            </Card>
-
-            {/* PASO 3: RESUMEN CLARO PARA CAJA / RECEPCIÓN */}
-            <Card variant="forest" className="flex flex-col justify-between p-6 lg:col-span-5">
-              <div>
-                <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#C8B289]">
-                  Paso 3 · Cuenta final en recepción
-                </span>
-                <h3 className="mt-1 font-editorial text-2xl font-medium text-white">
-                  Resumen del intercambio
-                </h3>
-
-                {redemptionCheck && (
-                  <div className="mt-5 space-y-3 text-sm">
-                    <div className="flex justify-between border-b border-white/15 pb-2">
-                      <span className="text-white/75">Máximo permitido en esta operación</span>
-                      <strong className="text-[#C8B289] tabular-nums">
-                        {selectedMember.role === "EMPRESA"
-                          ? formatMxn(redemptionCheck.maxAllowedAmountMxn)
-                          : `${Math.floor(redemptionCheck.maxAllowedAmountMxn).toLocaleString("es-MX")} pts`}
-                      </strong>
-                    </div>
-
-                    {effectiveRedeemPurpose !== "PREMIO_CATALOGO" && (
-                      <>
-                        <div className="flex justify-between border-b border-white/15 pb-2">
-                          <span className="text-white/75">Total de la cuenta</span>
-                          <span className="tabular-nums">{formatMxn(redeemBaseAmount)}</span>
-                        </div>
-                        <div className="flex justify-between border-b border-white/15 pb-2">
-                          <span className="text-white/75">Se descuenta con puntos/saldo</span>
-                          <strong className="text-[#C8B289] tabular-nums">
-                            -{formatMxn(redeemRequestedAmount)}
-                          </strong>
-                        </div>
-                        <div className="flex items-baseline justify-between rounded-xl bg-white/10 px-4 py-3">
-                          <span className="text-white/85">Restante a cobrar en caja</span>
-                          <strong className="font-editorial text-3xl text-white tabular-nums">
-                            {formatMxn(Math.max(0, redeemBaseAmount - redeemRequestedAmount))}
-                          </strong>
-                        </div>
-                      </>
-                    )}
-
-                    <div className="flex justify-between pt-1 text-xs">
-                      <span className="text-white/75">Saldo que le quedará al socio</span>
-                      <strong className="text-[#C8B289] tabular-nums">
-                        {selectedMember.role === "EMPRESA"
-                          ? formatMxn(
-                              Math.max(0, selectedMember.cashBalanceMxn - redeemRequestedAmount)
-                            )
-                          : `${Math.max(
-                              0,
-                              selectedMember.pointsBalance - redeemRequestedAmount
-                            ).toLocaleString("es-MX")} pts`}
-                      </strong>
-                    </div>
-
-                    {!redemptionCheck.valid && redemptionCheck.error && (
-                      <div className="mt-3 rounded-xl border border-[#F2C3C3]/40 bg-[#9B2C2C]/35 p-3.5 text-xs text-white">
-                        <p className="font-semibold text-[#FCD4D4]">No se puede aplicar todavía:</p>
-                        <p className="mt-1 leading-relaxed">{redemptionCheck.error}</p>
-                      </div>
-                    )}
-
-                    {redemptionCheck.valid && (
-                      <div className="mt-3 flex items-center gap-2 rounded-xl bg-white/10 p-3 text-xs text-[#DFCFAF]">
-                        <CheckCircle2 className="h-4 w-4 shrink-0 text-[#C8B289]" />
-                        <span>Cumple con las reglas del programa. Listo para descontar.</span>
-                      </div>
-                    )}
-                  </div>
-                )}
+                  )}
+                </Card>
               </div>
-
-              <div className="mt-6 border-t border-white/15 pt-4 text-xs text-white/70">
-                Reglas rápidas: mínimo <strong>100 pts</strong> en cuentas personales · hasta{" "}
-                <strong>25%</strong> en hospedaje · <strong>10%</strong> en eventos empresa ·{" "}
-                <strong>100%</strong> en premios del catálogo.
-              </div>
-            </Card>
+            )}
           </div>
         )}
 

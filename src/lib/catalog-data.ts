@@ -1130,3 +1130,49 @@ export const AMANECER_ITEMS: AmanecerItem[] = [
       "https://images.unsplash.com/photo-1591047139829-d91aecb6caea?auto=format&fit=crop&w=900&q=80",
   },
 ];
+
+export interface AdminRedeemableExperience {
+  id: string;
+  hotelKey: MomentHotelKey | "varias";
+  hotelName: string;
+  title: string;
+  subtitle: string;
+  capacity: string;
+  badge: string;
+  pointsCost: number;
+  mxnReference: number;
+  imageUrl: string;
+}
+
+/**
+ * Catálogo unificado de experiencias y premios canjeables desde /admin,
+ * ordenado de menor a mayor costo en puntos.
+ */
+export const ADMIN_REDEEMABLE_EXPERIENCES: AdminRedeemableExperience[] = [
+  ...MOMENTOS_ORGANICO.map((m) => ({
+    id: m.id,
+    hotelKey: m.hotelKey,
+    hotelName: m.hotelName,
+    title: m.title,
+    subtitle: m.subtitle,
+    capacity: m.capacity,
+    badge: m.badge,
+    pointsCost: m.pointsCost,
+    mxnReference: m.mxnReference,
+    imageUrl: m.imageUrl,
+  })),
+  ...OTAM_PERSONAL_ACTIVITIES.filter(
+    (a) => a.pointsEligible && typeof a.estimatedPricePerPaxMxn === "number"
+  ).map((a) => ({
+    id: a.id,
+    hotelKey: "varias" as const,
+    hotelName: a.propertiesLabel,
+    title: a.title,
+    subtitle: `OTAM por persona · ${a.duration}`,
+    capacity: a.paxRange,
+    badge: "Experiencia OTAM",
+    pointsCost: a.estimatedPricePerPaxMxn!,
+    mxnReference: a.estimatedPricePerPaxMxn!,
+    imageUrl: a.imageUrl,
+  })),
+].sort((a, b) => a.pointsCost - b.pointsCost);

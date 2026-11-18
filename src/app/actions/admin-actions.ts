@@ -14,6 +14,7 @@ import {
   round2,
   validateRedemption,
 } from "@/lib/loyalty-engine";
+import { ADMIN_REDEEMABLE_EXPERIENCES } from "@/lib/catalog-data";
 import { toNumber } from "@/lib/utils";
 
 async function requireAdminStaff() {
@@ -710,6 +711,161 @@ export async function updateQuoteStatusAction(
     return {
       ok: false as const,
       error: err instanceof Error ? err.message : "Error al actualizar cotización.",
+    };
+  }
+}
+
+const adminExperienceRedemptionSchema = z.object({
+  membershipId: z.string().min(1),
+  experienceId: z.string().min(1),
+  authorizedPersonId: z.string().optional().nullable(),
+});
+
+export async function redeemCatalogExperienceByAdminAction(rawInput: unknown) {
+  try {
+    const admin = await requireAdminStaff();
+    const parsed = adminExperienceRedemptionSchema.safeParse(rawInput);
+    if (!parsed.success) {
+      return { ok: false as const, error: "Selecciona un socio y una experiencia válida." };
+    }
+
+    const input = parsed.data;
+    const moment = ADMIN_REDEEMABLE_EXPERIENCES.find((m) => m.id === input.experienceId);
+    if (!moment) {
+      return { ok: false as const, error: "Experiencia no encontrada en el catálogo." };
+    }
+
+    const summary = await prisma.$transaction(async (tx) => {
+      const membership = await tx.membership.findUnique({
+        where: { id: input.membershipId },
+        include: {
+          user: true,
+          b2bProfile: { include: { authorizedPeople: true } },
+        },
+      });
+      if (!membership) throw new Error("Membresía no encontrada.");
+      if (membership.user.role === "ADMIN_STAFF") {
+        throw new Error("Las cuentas administrativas no realizan canjes.");
+      }
+      if (membership.status === "SUSPENDIDA") {
+        throw new Error("La membresía está suspendida.");
+      }
+
+      let isAuthorizedPerson = true;
+      if (membership.user.role === "EMPRESA") {
+        const people = membership.b2bProfile?.authorizedPeople ?? [];
+        if (input.authorizedPersonId) {
+          const person = people.find((p) => p.id === input.authorizedPersonId);
+          isAuthorizedPerson = Boolean(
+            person && person.isActive && person.roleInAccount === "AUTORIZA_PREMIOS_Y_SALDO"
+          );
+        } else {
+          isAuthorizedPerson = people.some(
+            (p) => p.isActive && p.roleInAccount === "AUTORIZA_PREMIOS_Y_SALDO"
+          );
+        }
+      }
+
+      const available =
+        membership.user.role === "EMPRESA"
+          ? toNumber(membership.cashBalanceMxn)
+          : membership.pointsBalance;
+
+      const cost =
+        membership.user.role === "EMPRESA" ? moment.mxnReference : moment.pointsCost;
+
+      const validation = validateRedemption({
+        profileRole: membership.user.role,
+        purpose: "PREMIO_CATALOGO",
+        eligibleBaseAmountMxn: cost,
+        requestedAmountMxn: cost,
+        availableBalance: available,
+        isAuthorizedPerson,
+      });
+
+      if (!validation.valid) {
+        throw new Error(validation.error);
+      }
+
+      const property =
+        moment.hotelKey !== "origen" && moment.hotelKey !== "varias"
+          ? await tx.hotelProperty.findUnique({ where: { slug: moment.hotelKey } })
+          : null;
+
+      if (membership.user.role === "EMPRESA") {
+        const updated = await tx.membership.updateMany({
+          where: { id: membership.id, cashBalanceMxn: { gte: cost } },
+          data: { cashBalanceMxn: { decrement: cost } },
+        });
+        if (updated.count === 0) throw new Error("Saldo empresarial insuficiente.");
+
+        await tx.transactionLedger.create({
+          data: {
+            membershipId: membership.id,
+            propertyId: property?.id ?? null,
+            type: "CANJE_SALDO",
+            description: `Canje de experiencia: ${moment.title} (${moment.hotelName})`,
+            grossAmountMxn: moment.mxnReference,
+            netEligibleAmountMxn: 0,
+            cashDeltaMxn: -cost,
+            createdByAdminId: admin.id,
+          },
+        });
+      } else {
+        const updated = await tx.membership.updateMany({
+          where: { id: membership.id, pointsBalance: { gte: cost } },
+          data: { pointsBalance: { decrement: cost } },
+        });
+        if (updated.count === 0) throw new Error("Puntos insuficientes.");
+
+        await tx.transactionLedger.create({
+          data: {
+            membershipId: membership.id,
+            propertyId: property?.id ?? null,
+            type: "CANJE_PUNTOS",
+            description: `Canje de experiencia: ${moment.title} (${moment.hotelName})`,
+            grossAmountMxn: moment.mxnReference,
+            netEligibleAmountMxn: 0,
+            pointsDelta: -cost,
+            createdByAdminId: admin.id,
+          },
+        });
+      }
+
+      const now = new Date();
+      await tx.rewardCertificate.create({
+        data: {
+          membershipId: membership.id,
+          type: "PREMIO_CATALOGO",
+          title: moment.title,
+          beneficiaryName: `${membership.user.firstName} ${membership.user.lastName}`.trim(),
+          status: "DISPONIBLE",
+          preferredPropertyId: property?.id ?? null,
+          periodStart: now,
+          expiresAt: addMonths(now, LOYALTY_CONSTANTS.CERTIFICATE_EXPIRY_MONTHS),
+        },
+      });
+
+      const holderName =
+        membership.b2bProfile?.legalName ||
+        `${membership.user.firstName} ${membership.user.lastName}`.trim();
+
+      return membership.user.role === "EMPRESA"
+        ? `¡Canje completado! Se descontaron $${cost.toLocaleString("es-MX")} MXN de ${holderName} por "${moment.title}".`
+        : `¡Canje completado! Se descontaron ${cost.toLocaleString("es-MX")} pts de ${holderName} por "${moment.title}".`;
+    });
+
+    revalidatePath("/admin");
+    revalidatePath("/mi-circulo");
+    revalidatePath("/empresa");
+    revalidatePath("/agencia");
+    revalidatePath("/experiencias");
+
+    return { ok: true as const, summary };
+  } catch (err) {
+    return {
+      ok: false as const,
+      error: err instanceof Error ? err.message : "No fue posible canjear la experiencia.",
     };
   }
 }
