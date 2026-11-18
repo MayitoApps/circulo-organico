@@ -36,13 +36,4 @@ export const DEMO_ACCOUNT_PRESETS: DemoAccountPreset[] = [
     destination: "/agencia",
     badge: "AGENCIA",
   },
-  {
-    id: "admin",
-    label: "Staff Recepción / Admin",
-    roleLabel: "Panel Operativo (/admin)",
-    email: "admin@grupoorganico.com",
-    password: "AdminOrganico2026!",
-    destination: "/admin",
-    badge: "ADMIN",
-  },
 ];

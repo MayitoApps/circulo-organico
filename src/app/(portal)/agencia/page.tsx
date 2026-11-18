@@ -7,8 +7,13 @@ import { toNumber } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
-export default async function AgenciaPortalPage() {
+export default async function AgenciaPortalPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string }>;
+}) {
   const session = await auth();
+  const sp = await searchParams;
   if (!session?.user) redirect("/entrar?callbackUrl=/agencia");
   if (session.user.role !== "AGENCIA") {
     redirect(getDashboardPathForRole(session.user.role));
@@ -52,11 +57,23 @@ export default async function AgenciaPortalPage() {
 
   return (
     <AgenciaPortalClient
+      initialTab={sp.tab}
       agencyName={
         membership.b2bProfile?.legalName ??
         `${session.user.firstName} ${session.user.lastName}`.trim()
       }
       rfc={membership.b2bProfile?.rfc ?? "—"}
+      businessActivity={membership.b2bProfile?.businessActivity ?? "Agencia y Organizador"}
+      responsibleName={
+        membership.b2bProfile?.responsibleName ??
+        `${session.user.firstName} ${session.user.lastName}`.trim()
+      }
+      responsibleRole={membership.b2bProfile?.responsibleRole ?? "Titular de cuenta"}
+      workEmail={membership.b2bProfile?.workEmail ?? session.user.email ?? ""}
+      contactPhone={membership.b2bProfile?.contactPhone ?? ""}
+      fiscalAddress={membership.b2bProfile?.fiscalAddress ?? "—"}
+      agreedTariffNotes={membership.b2bProfile?.agreedTariffNotes ?? null}
+      agreementApprovedAt={membership.b2bProfile?.agreementApprovedAt?.toISOString() ?? null}
       membershipNumber={membership.membershipNumber}
       qrToken={membership.qrToken}
       tier={membership.tier}

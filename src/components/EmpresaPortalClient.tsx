@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState, useTransition } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Building2,
@@ -32,11 +31,14 @@ import {
   addAuthorizedPersonAction,
   toggleAuthorizedPersonAction,
 } from "@/app/actions/member-actions";
+import { usePortalTab } from "@/lib/portal-tab";
 import { cn, formatShortDate } from "@/lib/utils";
 
-type EmpresaTab = "resumen" | "reservas" | "saldo" | "equipo" | "convenio";
+const EMPRESA_TABS = ["resumen", "reservas", "saldo", "equipo", "convenio"] as const;
+type EmpresaTab = (typeof EMPRESA_TABS)[number];
 
 export function EmpresaPortalClient({
+  initialTab,
   legalName,
   rfc,
   businessActivity,
@@ -60,6 +62,7 @@ export function EmpresaPortalClient({
   ledgers,
   authorizedPeople,
 }: {
+  initialTab?: string;
   legalName: string;
   rfc: string;
   businessActivity: string;
@@ -110,7 +113,7 @@ export function EmpresaPortalClient({
   }>;
 }) {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<EmpresaTab>("resumen");
+  const [activeTab, setActiveTab] = usePortalTab(EMPRESA_TABS, "resumen", initialTab);
   const [newFullName, setNewFullName] = useState("");
   const [newEmail, setNewEmail] = useState("");
   const [newPhone, setNewPhone] = useState("");
@@ -348,12 +351,13 @@ export function EmpresaPortalClient({
                   Hospedajes y eventos reservados por colaboradores autorizados.
                 </p>
               </div>
-              <Link
-                href="/hoteles"
-                className="rounded-full bg-[#1B3B2B] px-4 py-2 text-xs font-semibold text-white hover:bg-[#132A1E]"
+              <button
+                type="button"
+                onClick={() => setActiveTab("equipo")}
+                className="rounded-full border border-[#DCD4C6] bg-[#FAF8F5] px-4 py-2 text-xs font-semibold text-[#1B3B2B] transition hover:border-[#1B3B2B]"
               >
-                + Nueva reserva en hoteles
-              </Link>
+                Gestionar autorizadores ({authorizedPeople.filter((p) => p.isActive).length})
+              </button>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[680px] text-left text-sm">

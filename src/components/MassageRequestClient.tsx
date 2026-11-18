@@ -112,10 +112,10 @@ export function MassageRequestClient({
               automáticamente 1 masaje relajante de 60 min cada 12 meses (y hasta 2 en Diamante).
             </p>
             <Link
-              href="/niveles"
+              href="/mi-circulo"
               className="mt-5 inline-flex rounded-full bg-[#1B3B2B] px-5 py-2.5 text-xs font-semibold text-white"
             >
-              Ver metas de nivel
+              Volver a Resumen y Nivel
             </Link>
           </Card>
         ) : (

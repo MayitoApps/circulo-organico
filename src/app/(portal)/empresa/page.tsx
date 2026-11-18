@@ -7,8 +7,13 @@ import { toNumber } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
-export default async function EmpresaPortalPage() {
+export default async function EmpresaPortalPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string }>;
+}) {
   const session = await auth();
+  const sp = await searchParams;
   if (!session?.user) redirect("/entrar?callbackUrl=/empresa");
   if (session.user.role !== "EMPRESA") {
     redirect(getDashboardPathForRole(session.user.role));
@@ -49,6 +54,7 @@ export default async function EmpresaPortalPage() {
 
   return (
     <EmpresaPortalClient
+      initialTab={sp.tab}
       legalName={membership.b2bProfile.legalName}
       rfc={membership.b2bProfile.rfc}
       businessActivity={membership.b2bProfile.businessActivity}

@@ -12,9 +12,17 @@ export default async function EntrarPage({
 }) {
   const session = await auth();
   const sp = await searchParams;
+  const safeCallback =
+    sp.callbackUrl &&
+    sp.callbackUrl.startsWith("/") &&
+    !sp.callbackUrl.startsWith("//") &&
+    sp.callbackUrl !== "/"
+      ? sp.callbackUrl
+      : null;
+
   if (session?.user) {
-    redirect(sp.callbackUrl || getDashboardPathForRole(session.user.role));
+    redirect(safeCallback || getDashboardPathForRole(session.user.role));
   }
 
-  return <EntrarClient callbackUrl={sp.callbackUrl} />;
+  return <EntrarClient callbackUrl={safeCallback ?? undefined} />;
 }

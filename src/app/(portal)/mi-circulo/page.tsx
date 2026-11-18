@@ -7,8 +7,13 @@ import { toNumber } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
-export default async function MiCirculoPage() {
+export default async function MiCirculoPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string }>;
+}) {
   const session = await auth();
+  const sp = await searchParams;
   if (!session?.user) redirect("/entrar?callbackUrl=/mi-circulo");
   if (session.user.role !== "SOCIO_PERSONAL") {
     redirect(getDashboardPathForRole(session.user.role));
@@ -40,6 +45,7 @@ export default async function MiCirculoPage() {
 
   return (
     <PersonalPortalClient
+      initialTab={sp.tab}
       fullName={`${membership.user.firstName} ${membership.user.lastName}`.trim()}
       membershipNumber={membership.membershipNumber}
       qrToken={membership.qrToken}

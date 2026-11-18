@@ -3,8 +3,10 @@
 import React, { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { signIn } from "next-auth/react";
+import { getSession, signIn } from "next-auth/react";
 import { ArrowRight, Lock, Mail } from "lucide-react";
+import { getDashboardPathForRole } from "@/auth.config";
+import { getSafeDashboardCallback } from "@/lib/portal-tab";
 import { Card, inputBaseClass, labelBaseClass, SectionEyebrow } from "@/components/ui/primitives";
 
 export function EntrarClient({ callbackUrl }: { callbackUrl?: string }) {
@@ -29,7 +31,24 @@ export function EntrarClient({ callbackUrl }: { callbackUrl?: string }) {
         return;
       }
 
-      router.push(callbackUrl || "/");
+      const safeCallback = getSafeDashboardCallback(callbackUrl);
+      if (safeCallback) {
+        router.replace(safeCallback);
+        router.refresh();
+        return;
+      }
+
+      const session = await getSession();
+      const destination = session?.user?.role
+        ? getDashboardPathForRole(session.user.role)
+        : "/entrar";
+
+      if (destination === "/entrar") {
+        window.location.assign("/entrar");
+        return;
+      }
+
+      router.replace(destination);
       router.refresh();
     });
   };

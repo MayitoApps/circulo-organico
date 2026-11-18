@@ -3,9 +3,11 @@
 import React, { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
+  Briefcase,
   Clock,
   Gift,
   Plus,
+  ShieldCheck,
   Sparkles,
   UserCheck,
   X,
@@ -20,6 +22,7 @@ import {
   TierBadge,
 } from "@/components/ui/primitives";
 import {
+  AGENCY_EVENT_RULES,
   calculateAgencyEventBenefits,
   formatMxn,
   type Tier,
@@ -29,11 +32,24 @@ import {
   designateCertificateBeneficiaryAction,
   registerAgencyEventProspectAction,
 } from "@/app/actions/member-actions";
-import { formatShortDate } from "@/lib/utils";
+import { usePortalTab } from "@/lib/portal-tab";
+import { cn, formatShortDate } from "@/lib/utils";
+
+const AGENCIA_TABS = ["resumen", "comisiones", "certificados", "tarjeta"] as const;
+type AgenciaTab = (typeof AGENCIA_TABS)[number];
 
 export function AgenciaPortalClient({
+  initialTab,
   agencyName,
   rfc,
+  businessActivity,
+  responsibleName,
+  responsibleRole,
+  workEmail,
+  contactPhone,
+  fiscalAddress,
+  agreedTariffNotes,
+  agreementApprovedAt,
   membershipNumber,
   qrToken,
   tier,
@@ -45,8 +61,17 @@ export function AgenciaPortalClient({
   events,
   certificates,
 }: {
+  initialTab?: string;
   agencyName: string;
   rfc: string;
+  businessActivity: string;
+  responsibleName: string;
+  responsibleRole: string;
+  workEmail: string;
+  contactPhone: string;
+  fiscalAddress: string;
+  agreedTariffNotes: string | null;
+  agreementApprovedAt: string | null;
   membershipNumber: string;
   qrToken: string;
   tier: Tier;
@@ -84,6 +109,10 @@ export function AgenciaPortalClient({
   }>;
 }) {
   const router = useRouter();
+  const [activeTab, setActiveTab] = usePortalTab(AGENCIA_TABS, "resumen", initialTab);
+  const [eventFilter, setEventFilter] = useState<"ALL" | "REALIZADO_Y_PAGADO" | "PROXIMO_EVENTO">(
+    "ALL"
+  );
   const [modalOpen, setModalOpen] = useState(false);
   const [clientName, setClientName] = useState("");
   const [propertySlug, setPropertySlug] = useState("quinta-soledad");
@@ -103,9 +132,19 @@ export function AgenciaPortalClient({
   );
   const [isPending, startTransition] = useTransition();
 
-  const prospectPreview = useMemo(
-    () => calculateAgencyEventBenefits(netAmount),
-    [netAmount]
+  const prospectPreview = useMemo(() => calculateAgencyEventBenefits(netAmount), [netAmount]);
+
+  const filteredEvents = useMemo(() => {
+    if (eventFilter === "ALL") return events;
+    return events.filter((e) => e.status === eventFilter);
+  }, [events, eventFilter]);
+
+  const upcomingEstimatedPoints = useMemo(
+    () =>
+      events
+        .filter((e) => !e.pointsReleased)
+        .reduce((acc, e) => acc + e.pointsGenerated, 0),
+    [events]
   );
 
   const handleRegisterProspect = (e: React.FormEvent) => {
@@ -145,199 +184,330 @@ export function AgenciaPortalClient({
     });
   };
 
+  const tabs: Array<{ id: AgenciaTab; label: string }> = [
+    { id: "resumen", label: `Resumen y Eventos (${events.length})` },
+    { id: "comisiones", label: "Comisiones y Puntos" },
+    { id: "certificados", label: `Certificados (${certificates.length})` },
+    { id: "tarjeta", label: "Tarjeta y Convenio" },
+  ];
+
   return (
     <div className="bg-[#FAF8F5] py-10">
-      <div className="mx-auto max-w-7xl space-y-9 px-4 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-7xl space-y-8 px-4 sm:px-6 lg:px-8">
         {status === "PENDIENTE_CONVENIO" && (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#E8D1A3] bg-[#FBF3E2] px-5 py-4 text-xs text-[#8A5A19]">
             <div className="flex items-center gap-2.5">
               <Clock className="h-4 w-4 shrink-0" />
               <span>
                 <strong>Convenio de agencia en revisión:</strong> Puedes pre-registrar eventos; la
-                liberación de comisiones y certificados se habilita al aprobarse el convenio en{" "}
-                <code className="font-mono">/admin</code>.
+                liberación de comisiones y certificados se habilita al aprobarse el convenio.
               </span>
             </div>
             <StatusBadge label="Pendiente de convenio" tone="warning" />
           </div>
         )}
 
-        {/* Encabezado + Botón Registrar cliente / evento */}
-        <div className="flex flex-col justify-between gap-5 lg:flex-row lg:items-center">
-          <div>
-            <div className="flex flex-wrap items-center gap-2.5">
-              <SectionEyebrow>Portal Agencias y Organizadores</SectionEyebrow>
-              <TierBadge tier={tier} />
-            </div>
-            <h1 className="mt-2 font-editorial text-4xl font-medium text-[#1B3B2B]">
-              {agencyName}
-            </h1>
-            <p className="mt-1 text-sm text-[#4C524E]">
-              RFC {rfc} · Evaluación independiente por cada evento realizado y pagado.
-            </p>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => {
-              setModalFeedback(null);
-              setModalOpen(true);
-            }}
-            className="inline-flex items-center gap-2 self-start rounded-full bg-[#1B3B2B] px-6 py-3 text-xs font-semibold text-white shadow-xs transition hover:bg-[#132A1E]"
-          >
-            <Plus className="h-4 w-4 text-[#C8B289]" />
-            Registrar un cliente / evento
-          </button>
-        </div>
-
-        {/* 4 Tarjetas KPI Superiores */}
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Card variant="white" className="p-5">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-[#9E6B4B]">
-              Eventos Realizados
-            </p>
-            <p className="mt-1.5 font-editorial text-3xl font-semibold text-[#1B3B2B] tabular-nums">
-              {formatMxn(realizedTotalMxn)}
-            </p>
-            <p className="mt-1 text-xs text-[#5E645F]">Monto total realizado y pagado</p>
-          </Card>
-
-          <Card variant="sand" className="p-5">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-[#9E6B4B]">
-              Comisión Pagada
-            </p>
-            <p className="mt-1.5 font-editorial text-3xl font-semibold text-[#1B3B2B] tabular-nums">
-              {formatMxn(commissionPaidMxn)}
-            </p>
-            <p className="mt-1 text-xs text-[#5E645F]">Liquidada a la agencia</p>
-          </Card>
-
-          <Card variant="white" className="p-5">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-[#9E6B4B]">
-              Comisión por Recibir
-            </p>
-            <p className="mt-1.5 font-editorial text-3xl font-semibold text-[#9E6B4B] tabular-nums">
-              {formatMxn(commissionPendingMxn)}
-            </p>
-            <p className="mt-1 text-xs text-[#5E645F]">Autorizada pendiente de pago</p>
-          </Card>
-
-          <Card variant="obsidian" className="p-5">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-[#C8B289]">
-              Puntos Disponibles
-            </p>
-            <p className="mt-1.5 font-editorial text-3xl font-semibold text-white tabular-nums">
-              {pointsBalance.toLocaleString("es-MX")} pts
-            </p>
-            <p className="mt-1 text-xs text-white/75">Equivale a {formatMxn(pointsBalance)}</p>
-          </Card>
-        </div>
-
-        {/* Tabla "El detalle de tus eventos" */}
-        <section>
-          <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+        {/* Encabezado + Botón Registrar cliente / evento + Tabs sincronizadas */}
+        <div className="space-y-5 border-b border-[#E4DDD1] pb-6">
+          <div className="flex flex-col justify-between gap-5 lg:flex-row lg:items-center">
             <div>
-              <SectionEyebrow>Cálculo por evento individual</SectionEyebrow>
-              <h2 className="mt-1 font-editorial text-3xl font-medium text-[#1B3B2B]">
-                El detalle de tus eventos
-              </h2>
+              <div className="flex flex-wrap items-center gap-2.5">
+                <SectionEyebrow>Portal Agencias y Organizadores</SectionEyebrow>
+                <TierBadge tier={tier} />
+              </div>
+              <h1 className="mt-2 font-editorial text-4xl font-medium text-[#1B3B2B]">
+                {agencyName}
+              </h1>
+              <p className="mt-1 text-sm text-[#4C524E]">
+                RFC {rfc} · Evaluación independiente por cada evento realizado y pagado.
+              </p>
             </div>
-            <span className="text-xs text-[#5E645F]">
-              Los eventos próximos muestran puntos estimados sin liberar regalos hasta su pago.
-            </span>
+
+            <button
+              type="button"
+              onClick={() => {
+                setModalFeedback(null);
+                setModalOpen(true);
+              }}
+              className="inline-flex items-center gap-2 self-start rounded-full bg-[#1B3B2B] px-6 py-3 text-xs font-semibold text-white shadow-xs transition hover:bg-[#132A1E]"
+            >
+              <Plus className="h-4 w-4 text-[#C8B289]" />
+              Registrar un cliente / evento
+            </button>
           </div>
 
-          <div className="overflow-hidden rounded-3xl border border-[#E4DDD1] bg-white">
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[860px] text-left text-sm">
-                <thead>
-                  <tr className="border-b border-[#E4DDD1] bg-[#F2EFE9]/80 text-xs uppercase tracking-[0.12em] text-[#5E645F]">
-                    <th className="px-5 py-3.5">Código y Sede</th>
-                    <th className="px-5 py-3.5">Estado</th>
-                    <th className="px-5 py-3.5">Monto y Nivel</th>
-                    <th className="px-5 py-3.5">Comisión</th>
-                    <th className="px-5 py-3.5">Puntos</th>
-                    <th className="px-5 py-3.5">Regalos liberados</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#EFE8DC]">
-                  {events.map((ev) => (
-                    <tr key={ev.id} className="hover:bg-[#FAF8F5]">
-                      <td className="px-5 py-4">
-                        <p className="font-semibold text-[#1B3B2B]">
-                          {ev.code} · {ev.propertyName}
-                        </p>
-                        <p className="text-xs text-[#5E645F]">
-                          {ev.clientName} · {formatShortDate(ev.eventDate)}
-                        </p>
-                      </td>
-                      <td className="px-5 py-4">
-                        <StatusBadge
-                          label={
-                            ev.status === "REALIZADO_Y_PAGADO"
-                              ? "Realizado y pagado"
-                              : "Próximo evento"
-                          }
-                          tone={ev.status === "REALIZADO_Y_PAGADO" ? "success" : "warning"}
-                        />
-                      </td>
-                      <td className="px-5 py-4">
-                        <p className="font-semibold text-[#1C201E] tabular-nums">
-                          {formatMxn(ev.netAmountMxn)}
-                        </p>
-                        <div className="mt-1">
-                          <TierBadge tier={ev.eventTier} />
-                        </div>
-                      </td>
-                      <td className="px-5 py-4">
-                        <p className="font-semibold text-[#1C201E] tabular-nums">
-                          {formatMxn(ev.commissionAmountMxn)} ({ev.commissionPercentage}%)
-                        </p>
-                        <div className="mt-1">
-                          <StatusBadge
-                            label={
-                              ev.commissionStatus === "PAGADA"
-                                ? "Pagada"
-                                : ev.commissionStatus === "AUTORIZADA"
-                                  ? "Autorizada"
-                                  : "Sin comisión"
-                            }
-                            tone={
-                              ev.commissionStatus === "PAGADA"
-                                ? "success"
-                                : ev.commissionStatus === "AUTORIZADA"
-                                  ? "info"
-                                  : "neutral"
-                            }
-                          />
-                        </div>
-                      </td>
-                      <td className="px-5 py-4 tabular-nums">
-                        <p className="font-semibold text-[#1B3B2B]">
-                          {ev.pointsGenerated.toLocaleString("es-MX")} pts
-                        </p>
-                        <p className="text-[11px] text-[#5E645F]">
-                          {ev.pointsReleased ? "Disponibles" : "Estimados"}
-                        </p>
-                      </td>
-                      <td className="px-5 py-4 text-xs text-[#4C524E]">
-                        {ev.status === "REALIZADO_Y_PAGADO" ? (
-                          <span className="font-medium text-[#1B3B2B]">{ev.rewardSummary}</span>
-                        ) : (
-                          <span className="text-[#8E938E]">Pendiente al realizar y pagar</span>
-                        )}
-                      </td>
-                    </tr>
+          <div className="flex flex-wrap gap-2">
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
+                className={cn(
+                  "rounded-full border px-4 py-2 text-xs font-semibold transition",
+                  activeTab === tab.id
+                    ? "border-[#1B3B2B] bg-[#1B3B2B] text-white"
+                    : "border-[#DFD6C7] bg-white text-[#4C524E] hover:border-[#1B3B2B]"
+                )}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* PESTAÑA 1: RESUMEN Y EVENTOS */}
+        {activeTab === "resumen" && (
+          <div className="space-y-8">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <Card variant="white" className="p-5">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-[#9E6B4B]">
+                  Eventos Realizados
+                </p>
+                <p className="mt-1.5 font-editorial text-3xl font-semibold text-[#1B3B2B] tabular-nums">
+                  {formatMxn(realizedTotalMxn)}
+                </p>
+                <p className="mt-1 text-xs text-[#5E645F]">Monto total realizado y pagado</p>
+              </Card>
+
+              <Card variant="sand" className="p-5">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-[#9E6B4B]">
+                  Comisión Pagada
+                </p>
+                <p className="mt-1.5 font-editorial text-3xl font-semibold text-[#1B3B2B] tabular-nums">
+                  {formatMxn(commissionPaidMxn)}
+                </p>
+                <p className="mt-1 text-xs text-[#5E645F]">Liquidada a la agencia</p>
+              </Card>
+
+              <Card variant="white" className="p-5">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-[#9E6B4B]">
+                  Comisión por Recibir
+                </p>
+                <p className="mt-1.5 font-editorial text-3xl font-semibold text-[#9E6B4B] tabular-nums">
+                  {formatMxn(commissionPendingMxn)}
+                </p>
+                <p className="mt-1 text-xs text-[#5E645F]">Autorizada pendiente de pago</p>
+              </Card>
+
+              <Card variant="obsidian" className="p-5">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-[#C8B289]">
+                  Puntos Disponibles
+                </p>
+                <p className="mt-1.5 font-editorial text-3xl font-semibold text-white tabular-nums">
+                  {pointsBalance.toLocaleString("es-MX")} pts
+                </p>
+                <p className="mt-1 text-xs text-white/75">Equivale a {formatMxn(pointsBalance)}</p>
+              </Card>
+            </div>
+
+            <section>
+              <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+                <div>
+                  <SectionEyebrow>Cálculo por evento individual</SectionEyebrow>
+                  <h2 className="mt-1 font-editorial text-3xl font-medium text-[#1B3B2B]">
+                    El detalle de tus eventos
+                  </h2>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {[
+                    { id: "ALL" as const, label: "Todos" },
+                    { id: "REALIZADO_Y_PAGADO" as const, label: "Realizados y pagados" },
+                    { id: "PROXIMO_EVENTO" as const, label: "Próximos" },
+                  ].map((f) => (
+                    <button
+                      key={f.id}
+                      type="button"
+                      onClick={() => setEventFilter(f.id)}
+                      className={cn(
+                        "rounded-full border px-3 py-1 text-xs font-medium transition",
+                        eventFilter === f.id
+                          ? "border-[#1B3B2B] bg-[#1B3B2B] text-white"
+                          : "border-[#E4DDD1] bg-white text-[#5E645F] hover:border-[#1B3B2B]"
+                      )}
+                    >
+                      {f.label}
+                    </button>
                   ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </section>
+                </div>
+              </div>
 
-        {/* Certificados de Regalo y Tarjeta de Agencia */}
-        <div className="grid items-start gap-8 lg:grid-cols-12">
-          <div className="space-y-4 lg:col-span-7">
+              {filteredEvents.length === 0 ? (
+                <Card variant="sand" className="p-8 text-center">
+                  <p className="text-sm text-[#4C524E]">
+                    No hay eventos registrados en esta vista. Usa{" "}
+                    <strong>&quot;Registrar un cliente / evento&quot;</strong> para dar de alta un
+                    nuevo prospecto.
+                  </p>
+                </Card>
+              ) : (
+                <div className="overflow-hidden rounded-3xl border border-[#E4DDD1] bg-white">
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[860px] text-left text-sm">
+                      <thead>
+                        <tr className="border-b border-[#E4DDD1] bg-[#F2EFE9]/80 text-xs uppercase tracking-[0.12em] text-[#5E645F]">
+                          <th className="px-5 py-3.5">Código y Sede</th>
+                          <th className="px-5 py-3.5">Estado</th>
+                          <th className="px-5 py-3.5">Monto y Nivel</th>
+                          <th className="px-5 py-3.5">Comisión</th>
+                          <th className="px-5 py-3.5">Puntos</th>
+                          <th className="px-5 py-3.5">Regalos liberados</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[#EFE8DC]">
+                        {filteredEvents.map((ev) => (
+                          <tr key={ev.id} className="hover:bg-[#FAF8F5]">
+                            <td className="px-5 py-4">
+                              <p className="font-semibold text-[#1B3B2B]">
+                                {ev.code} · {ev.propertyName}
+                              </p>
+                              <p className="text-xs text-[#5E645F]">
+                                {ev.clientName} · {formatShortDate(ev.eventDate)}
+                              </p>
+                            </td>
+                            <td className="px-5 py-4">
+                              <StatusBadge
+                                label={
+                                  ev.status === "REALIZADO_Y_PAGADO"
+                                    ? "Realizado y pagado"
+                                    : "Próximo evento"
+                                }
+                                tone={ev.status === "REALIZADO_Y_PAGADO" ? "success" : "warning"}
+                              />
+                            </td>
+                            <td className="px-5 py-4">
+                              <p className="font-semibold text-[#1C201E] tabular-nums">
+                                {formatMxn(ev.netAmountMxn)}
+                              </p>
+                              <div className="mt-1">
+                                <TierBadge tier={ev.eventTier} />
+                              </div>
+                            </td>
+                            <td className="px-5 py-4">
+                              <p className="font-semibold text-[#1C201E] tabular-nums">
+                                {formatMxn(ev.commissionAmountMxn)} ({ev.commissionPercentage}%)
+                              </p>
+                              <div className="mt-1">
+                                <StatusBadge
+                                  label={
+                                    ev.commissionStatus === "PAGADA"
+                                      ? "Pagada"
+                                      : ev.commissionStatus === "AUTORIZADA"
+                                        ? "Autorizada"
+                                        : "Sin comisión"
+                                  }
+                                  tone={
+                                    ev.commissionStatus === "PAGADA"
+                                      ? "success"
+                                      : ev.commissionStatus === "AUTORIZADA"
+                                        ? "info"
+                                        : "neutral"
+                                  }
+                                />
+                              </div>
+                            </td>
+                            <td className="px-5 py-4 tabular-nums">
+                              <p className="font-semibold text-[#1B3B2B]">
+                                {ev.pointsGenerated.toLocaleString("es-MX")} pts
+                              </p>
+                              <p className="text-[11px] text-[#5E645F]">
+                                {ev.pointsReleased ? "Disponibles" : "Estimados"}
+                              </p>
+                            </td>
+                            <td className="px-5 py-4 text-xs text-[#4C524E]">
+                              {ev.status === "REALIZADO_Y_PAGADO" ? (
+                                <span className="font-medium text-[#1B3B2B]">
+                                  {ev.rewardSummary}
+                                </span>
+                              ) : (
+                                <span className="text-[#8E938E]">Pendiente al realizar y pagar</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </section>
+          </div>
+        )}
+
+        {/* PESTAÑA 2: COMISIONES Y PUNTOS */}
+        {activeTab === "comisiones" && (
+          <div className="space-y-8">
+            <div className="grid gap-4 sm:grid-cols-3">
+              <Card variant="sand" className="p-6">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-[#9E6B4B]">
+                  Comisión ya pagada
+                </p>
+                <p className="mt-1.5 font-editorial text-3xl font-semibold text-[#1B3B2B] tabular-nums">
+                  {formatMxn(commissionPaidMxn)}
+                </p>
+                <p className="mt-1 text-xs text-[#5E645F]">Liquidada por administración</p>
+              </Card>
+
+              <Card variant="white" className="p-6">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-[#9E6B4B]">
+                  Comisión autorizada por cobrar
+                </p>
+                <p className="mt-1.5 font-editorial text-3xl font-semibold text-[#9E6B4B] tabular-nums">
+                  {formatMxn(commissionPendingMxn)}
+                </p>
+                <p className="mt-1 text-xs text-[#5E645F]">De eventos ya realizados y pagados</p>
+              </Card>
+
+              <Card variant="forest" className="p-6">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-[#C8B289]">
+                  Billetera de puntos
+                </p>
+                <p className="mt-1.5 font-editorial text-3xl font-semibold text-white tabular-nums">
+                  {pointsBalance.toLocaleString("es-MX")} pts
+                </p>
+                <p className="mt-1 text-xs text-white/75">
+                  +{upcomingEstimatedPoints.toLocaleString("es-MX")} pts estimados en próximos eventos
+                </p>
+              </Card>
+            </div>
+
+            <Card variant="white" className="p-6">
+              <SectionEyebrow>Reglas oficiales por evento</SectionEyebrow>
+              <h2 className="mt-1 font-editorial text-2xl font-semibold text-[#1B3B2B]">
+                Tabulador independiente por monto neto elegible
+              </h2>
+              <div className="mt-5 grid gap-4 md:grid-cols-3">
+                {(["ORIGEN", "ORO", "DIAMANTE"] as Tier[]).map((t) => {
+                  const r = AGENCY_EVENT_RULES[t];
+                  const rangeLabel =
+                    r.maxAmountMxn === null
+                      ? `Desde ${formatMxn(r.minAmountMxn)}`
+                      : r.minAmountMxn === 0
+                        ? `Hasta ${formatMxn(r.maxAmountMxn)}`
+                        : `${formatMxn(r.minAmountMxn)} — ${formatMxn(r.maxAmountMxn)}`;
+                  return (
+                    <div
+                      key={t}
+                      className="rounded-2xl border border-[#E4DDD1] bg-[#FAF8F5] p-4 text-xs"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <TierBadge tier={t} />
+                        <span className="font-mono text-[#5E645F]">{rangeLabel}</span>
+                      </div>
+                      <p className="mt-3 font-semibold text-[#1B3B2B]">
+                        Comisión {r.commissionPct}% · Puntos {r.pointsPct}%
+                      </p>
+                      <p className="mt-1 text-[#5E645F]">Regalo: {r.rewardSummary}</p>
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
+          </div>
+        )}
+
+        {/* PESTAÑA 3: CERTIFICADOS DE REGALO */}
+        {activeTab === "certificados" && (
+          <div className="space-y-4">
             <div>
               <SectionEyebrow>Autorización de beneficiarios</SectionEyebrow>
               <h2 className="mt-1 font-editorial text-3xl font-medium text-[#1B3B2B]">
@@ -349,75 +519,171 @@ export function AgenciaPortalClient({
               </p>
             </div>
 
-            {certificates.map((cert) => {
-              const fb = certFeedback?.id === cert.id ? certFeedback : null;
-              return (
-                <Card key={cert.id} variant="white" className="p-5">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="flex items-start gap-3">
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#1B3B2B] text-[#C8B289]">
-                        <Gift className="h-4 w-4" />
+            {certificates.length === 0 ? (
+              <Card variant="sand" className="p-8 text-center">
+                <p className="text-sm text-[#4C524E]">
+                  Todavía no tienes certificados liberados. Se generan automáticamente cuando un evento
+                  Oro o Diamante queda realizado y pagado.
+                </p>
+              </Card>
+            ) : (
+              <div className="grid gap-5 lg:grid-cols-2">
+                {certificates.map((cert) => {
+                  const fb = certFeedback?.id === cert.id ? certFeedback : null;
+                  return (
+                    <Card key={cert.id} variant="white" className="p-5">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="flex items-start gap-3">
+                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#1B3B2B] text-[#C8B289]">
+                            <Gift className="h-4 w-4" />
+                          </div>
+                          <div>
+                            <h3 className="font-editorial text-xl font-semibold text-[#1B3B2B]">
+                              {cert.title}
+                            </h3>
+                            <p className="mt-0.5 text-xs text-[#5E645F]">
+                              {cert.propertyName ? `${cert.propertyName} · ` : ""}
+                              Vigencia: {formatShortDate(cert.periodStart)} al{" "}
+                              {formatShortDate(cert.expiresAt)}
+                            </p>
+                          </div>
+                        </div>
+                        <StatusBadge
+                          label={cert.status}
+                          tone={cert.status === "DISPONIBLE" ? "success" : "neutral"}
+                        />
                       </div>
-                      <div>
-                        <h3 className="font-editorial text-xl font-semibold text-[#1B3B2B]">
-                          {cert.title}
-                        </h3>
-                        <p className="mt-0.5 text-xs text-[#5E645F]">
-                          {cert.propertyName ? `${cert.propertyName} · ` : ""}
-                          Vigencia: {formatShortDate(cert.periodStart)} al{" "}
-                          {formatShortDate(cert.expiresAt)}
+
+                      <div className="mt-4 flex flex-wrap items-center gap-2.5 border-t border-[#EFE8DC] pt-3.5">
+                        <UserCheck className="h-4 w-4 text-[#9E6B4B]" />
+                        <input
+                          type="text"
+                          value={beneficiaryDrafts[cert.id] ?? ""}
+                          onChange={(e) =>
+                            setBeneficiaryDrafts((prev) => ({
+                              ...prev,
+                              [cert.id]: e.target.value,
+                            }))
+                          }
+                          placeholder="Nombre del beneficiario autorizado"
+                          className="min-w-[200px] flex-1 rounded-xl border border-[#DCD4C6] bg-[#FAF8F5] px-3 py-1.5 text-xs text-[#1C201E] focus:border-[#1B3B2B] focus:outline-none"
+                        />
+                        <button
+                          type="button"
+                          disabled={isPending}
+                          onClick={() => handleSaveBeneficiary(cert.id)}
+                          className="rounded-full bg-[#1B3B2B] px-4 py-1.5 text-xs font-semibold text-white hover:bg-[#132A1E]"
+                        >
+                          Designar beneficiario
+                        </button>
+                      </div>
+                      {fb && (
+                        <p
+                          className={`mt-2 text-xs ${fb.ok ? "text-[#1B3B2B]" : "text-[#9B2C2C]"}`}
+                        >
+                          {fb.text}
                         </p>
-                      </div>
-                    </div>
-                    <StatusBadge
-                      label={cert.status}
-                      tone={cert.status === "DISPONIBLE" ? "success" : "neutral"}
-                    />
-                  </div>
+                      )}
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
 
-                  <div className="mt-4 flex flex-wrap items-center gap-2.5 border-t border-[#EFE8DC] pt-3.5">
-                    <UserCheck className="h-4 w-4 text-[#9E6B4B]" />
-                    <input
-                      type="text"
-                      value={beneficiaryDrafts[cert.id] ?? ""}
-                      onChange={(e) =>
-                        setBeneficiaryDrafts((prev) => ({ ...prev, [cert.id]: e.target.value }))
-                      }
-                      placeholder="Nombre del beneficiario autorizado"
-                      className="min-w-[220px] flex-1 rounded-xl border border-[#DCD4C6] bg-[#FAF8F5] px-3 py-1.5 text-xs text-[#1C201E] focus:border-[#1B3B2B] focus:outline-none"
-                    />
-                    <button
-                      type="button"
-                      disabled={isPending}
-                      onClick={() => handleSaveBeneficiary(cert.id)}
-                      className="rounded-full bg-[#1B3B2B] px-4 py-1.5 text-xs font-semibold text-white hover:bg-[#132A1E]"
-                    >
-                      Designar beneficiario
-                    </button>
+        {/* PESTAÑA 4: TARJETA Y CONVENIO */}
+        {activeTab === "tarjeta" && (
+          <div className="grid items-start gap-8 lg:grid-cols-12">
+            <Card variant="white" className="p-7 lg:col-span-7">
+              <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[#EFE8DC] pb-5">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#1B3B2B] text-[#C8B289]">
+                    <Briefcase className="h-5 w-5" />
                   </div>
-                  {fb && (
-                    <p
-                      className={`mt-2 text-xs ${fb.ok ? "text-[#1B3B2B]" : "text-[#9B2C2C]"}`}
-                    >
-                      {fb.text}
+                  <div>
+                    <h2 className="font-editorial text-2xl font-semibold text-[#1B3B2B]">
+                      Expediente de convenio de agencia
+                    </h2>
+                    <p className="text-xs text-[#5E645F]">
+                      {agreementApprovedAt
+                        ? `Aprobado el ${formatShortDate(agreementApprovedAt)}`
+                        : "Pendiente de validación administrativa"}
                     </p>
-                  )}
-                </Card>
-              );
-            })}
-          </div>
+                  </div>
+                </div>
+                <StatusBadge
+                  label={status === "ACTIVA" ? "Convenio Activo" : status}
+                  tone={status === "ACTIVA" ? "success" : "warning"}
+                />
+              </div>
 
-          <div className="flex flex-col items-center lg:col-span-5 lg:items-end">
-            <MemberCard
-              holderName={agencyName}
-              membershipNumber={membershipNumber}
-              tier={tier}
-              qrValue={`circulo-organico://qr/${qrToken}`}
-              accountTypeLabel="Agencia & Eventos"
-              downloadable
-            />
+              <div className="mt-6 grid gap-5 text-sm sm:grid-cols-2">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-[#9E6B4B]">
+                    Razón social
+                  </p>
+                  <p className="mt-1 font-medium text-[#1C201E]">{agencyName}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-[#9E6B4B]">
+                    RFC
+                  </p>
+                  <p className="mt-1 font-mono font-medium text-[#1C201E]">{rfc}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-[#9E6B4B]">
+                    Actividad / Especialidad
+                  </p>
+                  <p className="mt-1 text-[#1C201E]">{businessActivity}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-[#9E6B4B]">
+                    Responsable
+                  </p>
+                  <p className="mt-1 text-[#1C201E]">
+                    {responsibleName} ({responsibleRole})
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-[#9E6B4B]">
+                    Contacto
+                  </p>
+                  <p className="mt-1 text-[#1C201E]">
+                    {workEmail}
+                    {contactPhone ? ` · ${contactPhone}` : ""}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-[#9E6B4B]">
+                    Domicilio fiscal
+                  </p>
+                  <p className="mt-1 text-[#1C201E]">{fiscalAddress}</p>
+                </div>
+              </div>
+
+              {agreedTariffNotes && (
+                <div className="mt-6 flex items-start gap-2.5 rounded-2xl bg-[#F2EFE9] p-4 text-xs text-[#1B3B2B]">
+                  <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-[#9E6B4B]" />
+                  <span>
+                    <strong>Condiciones acordadas:</strong> {agreedTariffNotes}
+                  </span>
+                </div>
+              )}
+            </Card>
+
+            <div className="flex flex-col items-center lg:col-span-5 lg:items-end">
+              <MemberCard
+                holderName={agencyName}
+                membershipNumber={membershipNumber}
+                tier={tier}
+                qrValue={`circulo-organico://qr/${qrToken}`}
+                accountTypeLabel="Agencia & Eventos"
+                downloadable
+              />
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Modal: Registrar cliente / evento */}
         {modalOpen && (
@@ -504,7 +770,9 @@ export function AgenciaPortalClient({
                   </div>
                   <div className="mt-2.5 grid grid-cols-3 gap-2 text-[#4C524E]">
                     <div>
-                      <span className="block text-[10px] uppercase">Comisión ({prospectPreview.commissionPercentage}%)</span>
+                      <span className="block text-[10px] uppercase">
+                        Comisión ({prospectPreview.commissionPercentage}%)
+                      </span>
                       <strong className="text-[#1B3B2B]">
                         {formatMxn(prospectPreview.commissionAmountMxn)}
                       </strong>

@@ -8,8 +8,13 @@ import { toNumber } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
-export default async function AdminPage() {
+export default async function AdminPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string }>;
+}) {
   const session = await auth();
+  const sp = await searchParams;
   if (!session?.user) redirect("/entrar?callbackUrl=/admin");
   if (session.user.role !== "ADMIN_STAFF") {
     redirect(getDashboardPathForRole(session.user.role));
@@ -121,6 +126,7 @@ export default async function AdminPage() {
 
   return (
     <AdminDashboardClient
+      initialTab={sp.tab}
       members={memberRecords}
       properties={properties.map((p) => ({ id: p.id, slug: p.slug, name: p.name }))}
       pendingB2B={pendingB2B}

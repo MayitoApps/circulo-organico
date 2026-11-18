@@ -40,6 +40,7 @@ import {
   StatusBadge,
   TierBadge,
 } from "@/components/ui/primitives";
+import { usePortalTab } from "@/lib/portal-tab";
 import { cn, formatShortDate } from "@/lib/utils";
 
 export interface AdminMemberRecord {
@@ -138,9 +139,10 @@ export interface AdminQuoteRow {
   createdAt: string;
 }
 
-type AdminSection = "operacion" | "canje" | "bandejas" | "agencias";
+const ADMIN_TABS = ["operacion", "canje", "bandejas", "agencias"] as const;
 
 export function AdminDashboardClient({
+  initialTab,
   members,
   properties,
   pendingB2B,
@@ -148,6 +150,7 @@ export function AdminDashboardClient({
   agencyEvents,
   quoteRequests,
 }: {
+  initialTab?: string;
   members: AdminMemberRecord[];
   properties: AdminPropertyOption[];
   pendingB2B: AdminPendingB2BRow[];
@@ -156,7 +159,11 @@ export function AdminDashboardClient({
   quoteRequests: AdminQuoteRow[];
 }) {
   const router = useRouter();
-  const [activeSection, setActiveSection] = useState<AdminSection>("operacion");
+  const [activeSection, setActiveSection] = usePortalTab(
+    ADMIN_TABS,
+    "operacion",
+    initialTab
+  );
   const [searchQuery, setSearchQuery] = useState("");
   const [qrInput, setQrInput] = useState("");
   const [selectedMembershipId, setSelectedMembershipId] = useState<string>(
@@ -403,7 +410,7 @@ export function AdminDashboardClient({
         {/* Header Admin */}
         <div className="flex flex-col justify-between gap-4 border-b border-[#E4DDD1] pb-6 lg:flex-row lg:items-end">
           <div>
-            <SectionEyebrow>Recepción · Ventas · Operación diaria</SectionEyebrow>
+            <SectionEyebrow>Administración · Recepción y Ventas</SectionEyebrow>
             <h1 className="mt-1.5 font-editorial text-4xl font-medium text-[#1B3B2B]">
               Panel Administrativo Círculo Orgánico
             </h1>
@@ -426,6 +433,90 @@ export function AdminDashboardClient({
           </div>
         </div>
 
+        {/* Resumen ejecutivo rápido con salto directo por pestaña */}
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <button
+            type="button"
+            onClick={() => setActiveSection("operacion")}
+            className={cn(
+              "rounded-2xl border p-4 text-left transition",
+              activeSection === "operacion"
+                ? "border-[#1B3B2B] bg-white shadow-xs"
+                : "border-[#E4DDD1] bg-white hover:border-[#1B3B2B]/40"
+            )}
+          >
+            <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#9E6B4B]">
+              Socios Activos
+            </span>
+            <p className="mt-1 font-editorial text-3xl font-semibold text-[#1B3B2B] tabular-nums">
+              {members.filter((m) => m.status === "ACTIVA").length}
+            </p>
+            <span className="text-xs text-[#5E645F]">
+              de {members.length} cuentas registradas
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveSection("bandejas")}
+            className={cn(
+              "rounded-2xl border p-4 text-left transition",
+              activeSection === "bandejas"
+                ? "border-[#1B3B2B] bg-white shadow-xs"
+                : "border-[#E4DDD1] bg-white hover:border-[#1B3B2B]/40"
+            )}
+          >
+            <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#9E6B4B]">
+              Citas Spa Solicitadas
+            </span>
+            <p className="mt-1 font-editorial text-3xl font-semibold text-[#1B3B2B] tabular-nums">
+              {massageRequests.filter((m) => m.status === "CITA_SOLICITADA").length}
+            </p>
+            <span className="text-xs text-[#5E645F]">
+              {massageRequests.filter((m) => m.status === "CONFIRMADO").length} confirmadas
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveSection("bandejas")}
+            className={cn(
+              "rounded-2xl border p-4 text-left transition",
+              activeSection === "bandejas"
+                ? "border-[#1B3B2B] bg-[#FBF3E2]/45 shadow-xs"
+                : "border-[#E4DDD1] bg-white hover:border-[#1B3B2B]/40"
+            )}
+          >
+            <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#9E6B4B]">
+              Convenios B2B Pendientes
+            </span>
+            <p className="mt-1 font-editorial text-3xl font-semibold text-[#1B3B2B] tabular-nums">
+              {pendingB2B.length}
+            </p>
+            <span className="text-xs text-[#5E645F]">Empresas / agencias por aprobar</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveSection("agencias")}
+            className={cn(
+              "rounded-2xl border p-4 text-left transition",
+              activeSection === "agencias"
+                ? "border-[#1B3B2B] bg-white shadow-xs"
+                : "border-[#E4DDD1] bg-white hover:border-[#1B3B2B]/40"
+            )}
+          >
+            <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#9E6B4B]">
+              Eventos / Cotizaciones
+            </span>
+            <p className="mt-1 font-editorial text-3xl font-semibold text-[#1B3B2B] tabular-nums">
+              {agencyEvents.filter((e) => e.status === "PROXIMO_EVENTO").length} /{" "}
+              {quoteRequests.filter((q) => q.status === "NUEVA").length}
+            </p>
+            <span className="text-xs text-[#5E645F]">Próximos eventos / cotizaciones nuevas</span>
+          </button>
+        </div>
+
         {cronResult && (
           <div className="rounded-2xl border border-[#BBD8C7] bg-[#E6F2EB] px-4 py-3 text-xs text-[#1B3B2B]">
             {cronResult}
@@ -445,130 +536,155 @@ export function AdminDashboardClient({
           </div>
         )}
 
-        {/* Buscador Universal y Lector QR */}
-        <Card variant="white" className="p-6">
-          <div className="grid gap-4 lg:grid-cols-12">
-            <div className="lg:col-span-7">
-              <label className={labelBaseClass}>
-                <span className="inline-flex items-center gap-1.5">
-                  <Search className="h-3.5 w-3.5 text-[#9E6B4B]" /> Buscador Universal (Núm. Socio,
-                  Nombre, Correo o RFC)
-                </span>
-              </label>
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Ej. 000 248, Ana López, empresa@ejemplo.com o EDM210418AB9..."
-                className={inputBaseClass}
-              />
-            </div>
-
-            <div className="lg:col-span-5">
-              <label className={labelBaseClass}>
-                <span className="inline-flex items-center gap-1.5">
-                  <QrCode className="h-3.5 w-3.5 text-[#9E6B4B]" /> Lector de Token QR
-                </span>
-              </label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={qrInput}
-                  onChange={(e) => setQrInput(e.target.value)}
-                  placeholder="Pega UUID QR o circulo-organico://qr/..."
-                  className={inputBaseClass}
-                />
-                <button
-                  type="button"
-                  onClick={handleQrDecode}
-                  className="shrink-0 rounded-xl bg-[#1B3B2B] px-4 py-2 text-xs font-semibold text-white hover:bg-[#132A1E]"
-                >
-                  Leer QR
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Lista rápida de coincidencias */}
-          <div className="mt-4 flex flex-wrap gap-2">
-            {filteredMembers.slice(0, 8).map((m) => {
-              const active = selectedMember?.membershipId === m.membershipId;
-              return (
-                <button
-                  key={m.membershipId}
-                  type="button"
-                  onClick={() => selectMember(m)}
-                  className={cn(
-                    "inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-xs transition",
-                    active
-                      ? "border-[#1B3B2B] bg-[#1B3B2B] text-white"
-                      : "border-[#E4DDD1] bg-[#FAF8F5] text-[#1C201E] hover:border-[#1B3B2B]"
-                  )}
-                >
-                  <span className="font-mono font-semibold">{m.membershipNumber}</span>
-                  <span>{m.legalName || m.fullName}</span>
-                  <span className="opacity-70">({m.role.replace("SOCIO_", "")})</span>
-                </button>
-              );
-            })}
-          </div>
-        </Card>
-
-        {/* Ficha de socio seleccionado */}
-        {selectedMember && (
-          <Card variant="sand" className="p-6">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-mono text-xs font-semibold text-[#9E6B4B]">
-                    SOCIO {selectedMember.membershipNumber}
-                  </span>
-                  <TierBadge tier={selectedMember.tier} />
-                  <StatusBadge
-                    label={selectedMember.status}
-                    tone={selectedMember.status === "ACTIVA" ? "success" : "warning"}
-                  />
-                </div>
-                <h2 className="mt-1.5 font-editorial text-3xl font-medium text-[#1B3B2B]">
-                  {selectedMember.legalName || selectedMember.fullName}
-                </h2>
-                <p className="text-xs text-[#5E645F]">
-                  {selectedMember.email} · {selectedMember.phone}
-                  {selectedMember.rfc ? ` · RFC ${selectedMember.rfc}` : ""}
+        {/* Buscador Universal, Lector QR y Ficha (activos en Consumos y Canje) */}
+        {(activeSection === "operacion" || activeSection === "canje") && (
+          <>
+            {members.length === 0 ? (
+              <Card variant="sand" className="p-8 text-center">
+                <p className="font-editorial text-2xl font-medium text-[#1B3B2B]">
+                  Aún no hay socios registrados
                 </p>
-              </div>
+                <p className="mt-1 text-xs text-[#5E645F]">
+                  Cuando se registre el primer socio personal, empresa o agencia, podrás buscarlo aquí
+                  por número de socio, correo, RFC o QR para cargar consumos o procesar canjes.
+                </p>
+              </Card>
+            ) : (
+              <>
+                {/* Buscador Universal y Lector QR */}
+                <Card variant="white" className="p-6">
+                  <div className="grid gap-4 lg:grid-cols-12">
+                    <div className="lg:col-span-7">
+                      <label className={labelBaseClass}>
+                        <span className="inline-flex items-center gap-1.5">
+                          <Search className="h-3.5 w-3.5 text-[#9E6B4B]" /> Buscador Universal (Núm.
+                          Socio, Nombre, Correo o RFC)
+                        </span>
+                      </label>
+                      <input
+                        type="text"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        placeholder="Ej. 000 248, Ana López, empresa@ejemplo.com o EDM210418AB9..."
+                        className={inputBaseClass}
+                      />
+                    </div>
 
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-                <div className="rounded-xl bg-white px-4 py-2.5">
-                  <span className="block text-[10px] uppercase text-[#9E6B4B]">Puntos</span>
-                  <strong className="font-editorial text-xl text-[#1B3B2B] tabular-nums">
-                    {selectedMember.pointsBalance.toLocaleString("es-MX")} pts
-                  </strong>
-                </div>
-                <div className="rounded-xl bg-white px-4 py-2.5">
-                  <span className="block text-[10px] uppercase text-[#9E6B4B]">Saldo Empresa</span>
-                  <strong className="font-editorial text-xl text-[#1B3B2B] tabular-nums">
-                    {formatMxn(selectedMember.cashBalanceMxn)}
-                  </strong>
-                </div>
-                <div className="rounded-xl bg-white px-4 py-2.5">
-                  <span className="block text-[10px] uppercase text-[#9E6B4B]">12m Noches / Visitas</span>
-                  <strong className="font-editorial text-xl text-[#1B3B2B] tabular-nums">
-                    {selectedMember.rolling12mNights}n / {selectedMember.rolling12mStaysCount}v
-                  </strong>
-                </div>
-                <div className="rounded-xl bg-white px-4 py-2.5">
-                  <span className="block text-[10px] uppercase text-[#9E6B4B]">12m Gasto Neto</span>
-                  <strong className="font-editorial text-xl text-[#1B3B2B] tabular-nums">
-                    {formatMxn(selectedMember.rolling12mSpendMxn)}
-                  </strong>
-                </div>
-              </div>
-            </div>
-          </Card>
+                    <div className="lg:col-span-5">
+                      <label className={labelBaseClass}>
+                        <span className="inline-flex items-center gap-1.5">
+                          <QrCode className="h-3.5 w-3.5 text-[#9E6B4B]" /> Lector de Token QR
+                        </span>
+                      </label>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={qrInput}
+                          onChange={(e) => setQrInput(e.target.value)}
+                          placeholder="Pega UUID QR o circulo-organico://qr/..."
+                          className={inputBaseClass}
+                        />
+                        <button
+                          type="button"
+                          onClick={handleQrDecode}
+                          className="shrink-0 rounded-xl bg-[#1B3B2B] px-4 py-2 text-xs font-semibold text-white hover:bg-[#132A1E]"
+                        >
+                          Leer QR
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Lista rápida de coincidencias */}
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {filteredMembers.slice(0, 8).map((m) => {
+                      const active = selectedMember?.membershipId === m.membershipId;
+                      return (
+                        <button
+                          key={m.membershipId}
+                          type="button"
+                          onClick={() => selectMember(m)}
+                          className={cn(
+                            "inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-xs transition",
+                            active
+                              ? "border-[#1B3B2B] bg-[#1B3B2B] text-white"
+                              : "border-[#E4DDD1] bg-[#FAF8F5] text-[#1C201E] hover:border-[#1B3B2B]"
+                          )}
+                        >
+                          <span className="font-mono font-semibold">{m.membershipNumber}</span>
+                          <span>{m.legalName || m.fullName}</span>
+                          <span className="opacity-70">({m.role.replace("SOCIO_", "")})</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </Card>
+
+                {/* Ficha de socio seleccionado */}
+                {selectedMember && (
+                  <Card variant="sand" className="p-6">
+                    <div className="flex flex-wrap items-start justify-between gap-4">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-mono text-xs font-semibold text-[#9E6B4B]">
+                            SOCIO {selectedMember.membershipNumber}
+                          </span>
+                          <TierBadge tier={selectedMember.tier} />
+                          <StatusBadge
+                            label={selectedMember.status}
+                            tone={selectedMember.status === "ACTIVA" ? "success" : "warning"}
+                          />
+                        </div>
+                        <h2 className="mt-1.5 font-editorial text-3xl font-medium text-[#1B3B2B]">
+                          {selectedMember.legalName || selectedMember.fullName}
+                        </h2>
+                        <p className="text-xs text-[#5E645F]">
+                          {selectedMember.email} · {selectedMember.phone}
+                          {selectedMember.rfc ? ` · RFC ${selectedMember.rfc}` : ""}
+                        </p>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                        <div className="rounded-xl bg-white px-4 py-2.5">
+                          <span className="block text-[10px] uppercase text-[#9E6B4B]">Puntos</span>
+                          <strong className="font-editorial text-xl text-[#1B3B2B] tabular-nums">
+                            {selectedMember.pointsBalance.toLocaleString("es-MX")} pts
+                          </strong>
+                        </div>
+                        <div className="rounded-xl bg-white px-4 py-2.5">
+                          <span className="block text-[10px] uppercase text-[#9E6B4B]">
+                            Saldo Empresa
+                          </span>
+                          <strong className="font-editorial text-xl text-[#1B3B2B] tabular-nums">
+                            {formatMxn(selectedMember.cashBalanceMxn)}
+                          </strong>
+                        </div>
+                        <div className="rounded-xl bg-white px-4 py-2.5">
+                          <span className="block text-[10px] uppercase text-[#9E6B4B]">
+                            12m Noches / Visitas
+                          </span>
+                          <strong className="font-editorial text-xl text-[#1B3B2B] tabular-nums">
+                            {selectedMember.rolling12mNights}n / {selectedMember.rolling12mStaysCount}v
+                          </strong>
+                        </div>
+                        <div className="rounded-xl bg-white px-4 py-2.5">
+                          <span className="block text-[10px] uppercase text-[#9E6B4B]">
+                            12m Gasto Neto
+                          </span>
+                          <strong className="font-editorial text-xl text-[#1B3B2B] tabular-nums">
+                            {formatMxn(selectedMember.rolling12mSpendMxn)}
+                          </strong>
+                        </div>
+                      </div>
+                    </div>
+                  </Card>
+                )}
+              </>
+            )}
+          </>
         )}
 
-        {/* Navegación interna del Dashboard */}
+        {/* Navegación interna sincronizada */}
         <div className="flex flex-wrap gap-2">
           {[
             { id: "operacion" as const, label: "1. Carga de Consumos y Acreditación" },

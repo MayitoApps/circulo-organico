@@ -1,27 +1,29 @@
 "use client";
 
-import React, { useState, useTransition } from "react";
+import React, { Suspense, useEffect, useState, useTransition } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { signIn, signOut } from "next-auth/react";
 import {
+  Award,
   Briefcase,
   Building2,
+  Calendar,
+  CalendarCheck,
   ChevronDown,
-  ExternalLink,
+  CreditCard,
   Gift,
-  Hotel,
   LayoutDashboard,
   LogOut,
   Menu,
-  Package,
-  Shield,
   Sparkles,
-  Trees,
+  Users,
+  Wallet,
   X,
 } from "lucide-react";
 import type { ProfileRole } from "@/lib/loyalty-engine";
 import { DEMO_ACCOUNT_PRESETS } from "@/lib/demo-accounts";
+import { PORTAL_TAB_EVENT, pushPortalTabInUrl } from "@/lib/portal-tab";
 import { cn } from "@/lib/utils";
 
 export interface PortalUser {
@@ -35,69 +37,262 @@ export interface PortalUser {
 
 interface NavItem {
   href: string;
+  basePath: string;
+  tab?: string;
+  isDefaultTab?: boolean;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
-  exact?: boolean;
 }
 
 function getNavForRole(role: ProfileRole): {
   roleTitle: string;
+  homeHref: string;
   items: NavItem[];
-  exploreItems: NavItem[];
 } {
   switch (role) {
     case "ADMIN_STAFF":
       return {
-        roleTitle: "Operación y Recepción",
+        roleTitle: "Administración",
+        homeHref: "/admin",
         items: [
-          { href: "/admin", label: "Panel Administrativo", icon: Shield, exact: true },
-        ],
-        exploreItems: [
-          { href: "/hoteles", label: "Nuestros Hoteles", icon: Hotel },
-          { href: "/otam", label: "Catálogo OTAM", icon: Trees },
-          { href: "/amanecer", label: "Catálogo Amanecer", icon: Package },
+          {
+            href: "/admin",
+            basePath: "/admin",
+            tab: "operacion",
+            isDefaultTab: true,
+            label: "Carga de Consumos",
+            icon: Sparkles,
+          },
+          {
+            href: "/admin?tab=canje",
+            basePath: "/admin",
+            tab: "canje",
+            label: "Redención y Canje",
+            icon: Gift,
+          },
+          {
+            href: "/admin?tab=bandejas",
+            basePath: "/admin",
+            tab: "bandejas",
+            label: "Citas Spa y Convenios",
+            icon: CalendarCheck,
+          },
+          {
+            href: "/admin?tab=agencias",
+            basePath: "/admin",
+            tab: "agencias",
+            label: "Eventos y Cotizaciones",
+            icon: Briefcase,
+          },
         ],
       };
     case "EMPRESA":
       return {
         roleTitle: "Cuenta Corporativa",
+        homeHref: "/empresa",
         items: [
-          { href: "/empresa", label: "Dashboard Empresa", icon: Building2, exact: true },
-        ],
-        exploreItems: [
-          { href: "/hoteles", label: "Nuestros Hoteles", icon: Hotel },
-          { href: "/otam", label: "Eventos OTAM", icon: Trees },
-          { href: "/amanecer", label: "Artículos Amanecer", icon: Package },
-          { href: "/experiencias", label: "Canjear Catálogo", icon: Gift },
+          {
+            href: "/empresa",
+            basePath: "/empresa",
+            tab: "resumen",
+            isDefaultTab: true,
+            label: "Resumen y Nivel",
+            icon: LayoutDashboard,
+          },
+          {
+            href: "/empresa?tab=reservas",
+            basePath: "/empresa",
+            tab: "reservas",
+            label: "Reservas del Equipo",
+            icon: Calendar,
+          },
+          {
+            href: "/empresa?tab=saldo",
+            basePath: "/empresa",
+            tab: "saldo",
+            label: "Mi Saldo (2%)",
+            icon: Wallet,
+          },
+          {
+            href: "/empresa?tab=equipo",
+            basePath: "/empresa",
+            tab: "equipo",
+            label: "Mi Equipo",
+            icon: Users,
+          },
+          {
+            href: "/empresa?tab=convenio",
+            basePath: "/empresa",
+            tab: "convenio",
+            label: "Mi Convenio",
+            icon: Building2,
+          },
         ],
       };
     case "AGENCIA":
       return {
         roleTitle: "Agencia y Organizador",
+        homeHref: "/agencia",
         items: [
-          { href: "/agencia", label: "Dashboard Agencia", icon: Briefcase, exact: true },
-        ],
-        exploreItems: [
-          { href: "/otam", label: "Cotizar Grupos OTAM", icon: Trees },
-          { href: "/amanecer", label: "Kits Amanecer", icon: Package },
-          { href: "/hoteles", label: "Explorar 6 Sedes", icon: Hotel },
+          {
+            href: "/agencia",
+            basePath: "/agencia",
+            tab: "resumen",
+            isDefaultTab: true,
+            label: "Resumen y Eventos",
+            icon: LayoutDashboard,
+          },
+          {
+            href: "/agencia?tab=comisiones",
+            basePath: "/agencia",
+            tab: "comisiones",
+            label: "Comisiones y Puntos",
+            icon: Wallet,
+          },
+          {
+            href: "/agencia?tab=certificados",
+            basePath: "/agencia",
+            tab: "certificados",
+            label: "Certificados de Regalo",
+            icon: Gift,
+          },
+          {
+            href: "/agencia?tab=tarjeta",
+            basePath: "/agencia",
+            tab: "tarjeta",
+            label: "Tarjeta y Convenio",
+            icon: CreditCard,
+          },
         ],
       };
     case "SOCIO_PERSONAL":
     default:
       return {
         roleTitle: "Socio Personal",
+        homeHref: "/mi-circulo",
         items: [
-          { href: "/mi-circulo", label: "Mi Cuenta y Puntos", icon: LayoutDashboard, exact: true },
-          { href: "/mi-circulo/masaje", label: "Tu Masaje de Regalo", icon: Sparkles, exact: true },
-        ],
-        exploreItems: [
-          { href: "/hoteles", label: "Nuestros Hoteles", icon: Hotel },
-          { href: "/experiencias", label: "Canjear Experiencias", icon: Gift },
-          { href: "/otam", label: "Experiencias OTAM", icon: Trees },
+          {
+            href: "/mi-circulo",
+            basePath: "/mi-circulo",
+            tab: "resumen",
+            isDefaultTab: true,
+            label: "Resumen y Tarjeta",
+            icon: LayoutDashboard,
+          },
+          {
+            href: "/mi-circulo?tab=reservas",
+            basePath: "/mi-circulo",
+            tab: "reservas",
+            label: "Mis Reservas",
+            icon: Calendar,
+          },
+          {
+            href: "/mi-circulo?tab=historial",
+            basePath: "/mi-circulo",
+            tab: "historial",
+            label: "Historial de Puntos",
+            icon: Award,
+          },
+          {
+            href: "/mi-circulo/masaje",
+            basePath: "/mi-circulo/masaje",
+            label: "Mi Masaje de Regalo",
+            icon: Sparkles,
+          },
         ],
       };
   }
+}
+
+function SidebarNavItems({
+  items,
+  onNavigate,
+}: {
+  items: NavItem[];
+  onNavigate: () => void;
+}) {
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [clientTab, setClientTab] = useState<string | null>(() => searchParams.get("tab"));
+
+  useEffect(() => {
+    setClientTab(searchParams.get("tab"));
+  }, [searchParams]);
+
+  useEffect(() => {
+    const syncTab = () => {
+      setClientTab(new URLSearchParams(window.location.search).get("tab"));
+    };
+    window.addEventListener("popstate", syncTab);
+    window.addEventListener(PORTAL_TAB_EVENT, syncTab);
+    return () => {
+      window.removeEventListener("popstate", syncTab);
+      window.removeEventListener(PORTAL_TAB_EVENT, syncTab);
+    };
+  }, []);
+
+  const isItemActive = (item: NavItem): boolean => {
+    if (!item.tab) {
+      return pathname === item.basePath;
+    }
+    if (pathname !== item.basePath) return false;
+    if (!clientTab) return Boolean(item.isDefaultTab);
+    return clientTab === item.tab;
+  };
+
+  const handleItemClick = (e: React.MouseEvent<HTMLAnchorElement>, item: NavItem) => {
+    onNavigate();
+    if (item.tab && pathname === item.basePath) {
+      e.preventDefault();
+      pushPortalTabInUrl(item.href);
+    }
+  };
+
+  return (
+    <nav className="mt-2.5 space-y-1.5" aria-label="Navegación del dashboard">
+      {items.map((item) => {
+        const active = isItemActive(item);
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            onClick={(e) => handleItemClick(e, item)}
+            className={cn(
+              "group flex items-center gap-2.5 rounded-xl px-3.5 py-2.5 text-xs font-semibold transition-all duration-200",
+              active
+                ? "bg-[#C8B289] text-[#1B3B2B] shadow-xs"
+                : "text-white/85 hover:bg-white/10 hover:text-white"
+            )}
+          >
+            <item.icon
+              className={cn(
+                "h-4 w-4 shrink-0 transition-transform duration-200 group-hover:scale-105",
+                active ? "text-[#1B3B2B]" : "text-[#C8B289]"
+              )}
+            />
+            <span className="truncate">{item.label}</span>
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
+
+function SidebarNavFallback({ items }: { items: NavItem[] }) {
+  return (
+    <nav className="mt-2.5 space-y-1.5" aria-label="Navegación del dashboard">
+      {items.map((item) => (
+        <Link
+          key={item.href}
+          href={item.href}
+          className="flex items-center gap-2.5 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-white/85"
+        >
+          <item.icon className="h-4 w-4 shrink-0 text-[#C8B289]" />
+          <span className="truncate">{item.label}</span>
+        </Link>
+      ))}
+    </nav>
+  );
 }
 
 export function PortalShell({
@@ -126,7 +321,7 @@ export function PortalShell({
       setDemoOpen(false);
       setMobileOpen(false);
       if (res && !res.error) {
-        router.push(preset.destination);
+        router.replace(preset.destination);
         router.refresh();
       }
     });
@@ -135,18 +330,26 @@ export function PortalShell({
   const handleSignOut = () => {
     startTransition(async () => {
       await signOut({ redirect: false });
-      router.push("/");
+      router.replace("/entrar");
       router.refresh();
     });
+  };
+
+  const handleLogoClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    setMobileOpen(false);
+    if (pathname === navConfig.homeHref) {
+      e.preventDefault();
+      pushPortalTabInUrl(navConfig.homeHref);
+    }
   };
 
   const renderSidebarContent = () => (
     <div className="flex h-full flex-col justify-between bg-[#1B3B2B] px-4 py-6 text-white">
       <div>
-        {/* Marca */}
+        {/* Marca del Dashboard */}
         <Link
-          href={navConfig.items[0]?.href ?? "/"}
-          onClick={() => setMobileOpen(false)}
+          href={navConfig.homeHref}
+          onClick={handleLogoClick}
           className="flex items-center gap-3 px-2"
         >
           <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#C8B289] text-[#1B3B2B]">
@@ -177,70 +380,32 @@ export function PortalShell({
           )}
         </div>
 
-        {/* Navegación principal del Dashboard */}
+        {/* Navegación principal por pestañas del Dashboard */}
         <div className="mt-6">
           <p className="px-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-white/50">
-            Mi Panel
+            Menú del Dashboard
           </p>
-          <nav className="mt-2 space-y-1">
-            {navConfig.items.map((item) => {
-              const active = item.exact
-                ? pathname === item.href
-                : pathname.startsWith(item.href);
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  onClick={() => setMobileOpen(false)}
-                  className={cn(
-                    "flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-xs font-semibold transition",
-                    active
-                      ? "bg-[#C8B289] text-[#1B3B2B]"
-                      : "text-white/85 hover:bg-white/10 hover:text-white"
-                  )}
-                >
-                  <item.icon className="h-4 w-4 shrink-0" />
-                  <span>{item.label}</span>
-                </Link>
-              );
-            })}
-          </nav>
-        </div>
-
-        {/* Acciones rápidas relacionadas */}
-        <div className="mt-6">
-          <p className="px-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-white/50">
-            Operaciones y Catálogos
-          </p>
-          <nav className="mt-2 space-y-1">
-            {navConfig.exploreItems.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={() => setMobileOpen(false)}
-                className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-medium text-white/75 transition hover:bg-white/10 hover:text-white"
-              >
-                <item.icon className="h-3.5 w-3.5 shrink-0 text-[#C8B289]" />
-                <span>{item.label}</span>
-              </Link>
-            ))}
-          </nav>
+          <Suspense fallback={<SidebarNavFallback items={navConfig.items} />}>
+            <SidebarNavItems items={navConfig.items} onNavigate={() => setMobileOpen(false)} />
+          </Suspense>
         </div>
       </div>
 
-      {/* Pie del sidebar: volver a la landing + Selector Demo + Salir */}
+      {/* Pie del sidebar: selector de vista previa + cerrar sesión */}
       <div className="space-y-2 border-t border-white/15 pt-4">
         <div className="relative">
           <button
             type="button"
             onClick={() => setDemoOpen((prev) => !prev)}
-            className="flex w-full items-center justify-between rounded-xl border border-white/15 bg-white/8 px-3 py-2 text-xs font-medium text-[#C8B289] hover:bg-white/15"
+            className="flex w-full items-center justify-between rounded-xl border border-white/15 bg-white/8 px-3 py-2 text-xs font-medium text-[#C8B289] transition hover:bg-white/15"
           >
             <span className="inline-flex items-center gap-1.5">
               <Sparkles className="h-3.5 w-3.5" />
-              Cambiar perfil demo
+              Cambiar cuenta demo
             </span>
-            <ChevronDown className="h-3.5 w-3.5" />
+            <ChevronDown
+              className={cn("h-3.5 w-3.5 transition-transform", demoOpen && "rotate-180")}
+            />
           </button>
 
           {demoOpen && (
@@ -251,7 +416,7 @@ export function PortalShell({
                   type="button"
                   disabled={isPending}
                   onClick={() => handleQuickSwitch(preset)}
-                  className="flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-[11px] text-white/90 hover:bg-white/10"
+                  className="flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-[11px] text-white/90 transition hover:bg-white/10"
                 >
                   <span className="truncate">{preset.label}</span>
                   <span className="ml-1 shrink-0 text-[10px] font-semibold text-[#C8B289]">
@@ -263,17 +428,10 @@ export function PortalShell({
           )}
         </div>
 
-        <Link
-          href="/"
-          className="flex items-center justify-between rounded-xl px-3 py-2 text-xs text-white/75 transition hover:bg-white/10 hover:text-white"
-        >
-          <span>Sitio informativo</span>
-          <ExternalLink className="h-3.5 w-3.5" />
-        </Link>
-
         <button
           type="button"
           onClick={handleSignOut}
+          disabled={isPending}
           className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium text-[#F5B7B1] transition hover:bg-white/10"
         >
           <LogOut className="h-3.5 w-3.5" />
@@ -287,16 +445,18 @@ export function PortalShell({
     <div className="flex min-h-screen bg-[#FAF8F5]">
       {/* Sidebar fijo en escritorio */}
       <aside className="hidden w-68 shrink-0 border-r border-[#274B39] lg:block">
-        <div className="sticky top-0 h-screen overflow-y-auto">
-          {renderSidebarContent()}
-        </div>
+        <div className="sticky top-0 h-screen overflow-y-auto">{renderSidebarContent()}</div>
       </aside>
 
       {/* Contenedor derecho */}
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Topbar móvil / tablet */}
         <header className="sticky top-0 z-40 flex h-14 items-center justify-between border-b border-[#E4DDD1] bg-[#FAF8F5]/95 px-4 backdrop-blur-md lg:hidden">
-          <Link href={navConfig.items[0]?.href ?? "/"} className="flex items-center gap-2">
+          <Link
+            href={navConfig.homeHref}
+            onClick={handleLogoClick}
+            className="flex items-center gap-2"
+          >
             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#1B3B2B] text-[#C8B289]">
               <span className="font-editorial text-base italic">C</span>
             </div>
