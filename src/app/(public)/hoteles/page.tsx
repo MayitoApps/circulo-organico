@@ -1,4 +1,5 @@
 import { ExternalLink, MapPin, PawPrint, Sparkles } from "lucide-react";
+import { CompromisoSection } from "@/components/CompromisoSection";
 import { ScrollReveal } from "@/components/ScrollReveal";
 import { getPropertiesSafe } from "@/lib/queries";
 import { formatMxn } from "@/lib/loyalty-engine";
@@ -93,6 +94,11 @@ export default async function HotelesPage() {
             </ScrollReveal>
           ))}
         </div>
+
+        <CompromisoSection
+          headingAs="h2"
+          className="mt-20 border-t border-[#E4DDD1] pt-14"
+        />
       </div>
     </div>
   );

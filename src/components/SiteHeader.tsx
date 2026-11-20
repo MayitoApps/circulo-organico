@@ -208,7 +208,7 @@ export function SiteHeader({ user }: { user: HeaderUser | null }) {
               </Link>
             ))}
             <Link
-              href="/compromiso"
+              href="/hoteles#compromiso"
               onClick={() => setMobileOpen(false)}
               className="col-span-2 rounded-xl border border-[#E4DDD1] bg-[#F2EFE9] px-3 py-2.5 text-sm font-medium text-[#1B3B2B]"
             >

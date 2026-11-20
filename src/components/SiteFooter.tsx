@@ -57,7 +57,7 @@ export function SiteFooter() {
               </li>
               <li>
                 <Link
-                  href="/compromiso"
+                  href="/hoteles#compromiso"
                   className="inline-block transition-all duration-200 hover:translate-x-1 hover:text-white"
                 >
                   Compromiso Social y Medioambiente

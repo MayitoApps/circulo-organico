@@ -656,7 +656,7 @@ export default async function LandingHomePage() {
 
           <ScrollReveal delayMs={240}>
             <Link
-              href="/compromiso"
+              href="/hoteles#compromiso"
               className="group flex h-full flex-col justify-between rounded-2xl border border-[#E4DDD1] bg-[#F2EFE9] p-5 transition-all duration-300 hover:-translate-y-1.5 hover:border-[#1B3B2B] hover:bg-white hover:shadow-[0_20px_40px_-18px_rgba(27,59,43,0.16)]"
             >
               <div>
