@@ -1,4 +1,4 @@
-import { CheckCircle2, Compass, ExternalLink, Sparkles, Trees, Users } from "lucide-react";
+import { CheckCircle2, Compass, ExternalLink, PlayCircle, Sparkles, Trees, Users } from "lucide-react";
 import { auth } from "@/auth";
 import {
   OTAM_CORPORATE_ACTIVITIES,
@@ -134,8 +134,39 @@ export default async function OtamPage() {
           </Card>
         </div>
 
+        {/* Video destacado OTAM */}
+        <ScrollReveal className="mt-12 border-b border-[#E4DDD1] pb-12">
+          <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <SectionEyebrow>OTAM en acción</SectionEyebrow>
+              <h2 className="mt-1.5 flex items-center gap-2 font-editorial text-3xl font-medium text-[#1B3B2B]">
+                <PlayCircle className="h-6 w-6 text-[#9E6B4B]" />
+                Vive la experiencia OTAM
+              </h2>
+            </div>
+            <p className="max-w-md text-xs leading-relaxed text-[#5E645F]">
+              Mira cómo diseñamos e implementamos experiencias memorables en nuestras sedes y en
+              locaciones externas.
+            </p>
+          </div>
+
+          <div className="overflow-hidden rounded-3xl border border-[#DFD2BA] bg-[#132A1E] p-2 shadow-[0_24px_54px_-24px_rgba(27,59,43,0.35)] sm:p-3">
+            <div className="aspect-video w-full overflow-hidden rounded-2xl bg-black">
+              <iframe
+                src="https://www.youtube.com/embed/Hr1uMRNerKM?rel=0"
+                title="Video OTAM · Casa productora de experiencias"
+                className="h-full w-full"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                referrerPolicy="strict-origin-when-cross-origin"
+                allowFullScreen
+                loading="lazy"
+              />
+            </div>
+          </div>
+        </ScrollReveal>
+
         {/* Catálogo interactivo OTAM */}
-        <div className="mt-10">
+        <div className="mt-12">
           <ScrollReveal>
             <div className="mb-6 flex items-center gap-2">
               <Trees className="h-5 w-5 text-[#9E6B4B]" />
